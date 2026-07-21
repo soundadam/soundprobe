@@ -12,10 +12,11 @@ of those products' routing configuration.
 
 ## Repository status
 
-The v0.1 implementation is in progress. The repository now contains the Go CLI
-foundation, stable result schema, consent and history persistence, JSON/plain
-output paths, export support, and provider interfaces. The real LibreSpeed and
-NDT7 helper integrations and interactive renderer are not implemented yet.
+The v0.1 implementation is in progress. The repository contains the Go CLI,
+stable result schema, consent and history persistence, JSON/plain output paths,
+export support, deterministic helper discovery, and the NJU LibreSpeed campus
+provider. The M-Lab NDT7 provider and interactive renderer are not implemented
+yet.
 
 Routine development must follow [SPEC.md](SPEC.md) and [AGENTS.md](AGENTS.md).
 No executable, helper binary, release artifact, or Homebrew Formula has been
@@ -24,14 +25,17 @@ published.
 ## Development
 
 ```text
-make check
+make test-offline
+make tools
 make build
 ./bin/njuprobe version
 ```
 
-The foundation build deliberately fails measurement commands before contacting
-any provider. Automated tests use injected fake providers and never run a real
-bandwidth test.
+`make test-offline` uses mock helpers and committed sanitized fixtures; it never
+runs a real bandwidth test. `make tools` builds the pinned LibreSpeed helper as
+a separate ignored executable under `.tools/bin`. Real campus acceptance is an
+explicit operator action. See [TESTING.md](TESTING.md) for exact commands and
+expected exit codes.
 
 ## Intended command surface
 
@@ -52,10 +56,10 @@ njuprobe consent revoke
 njuprobe version
 ```
 
-Running `njuprobe` will eventually execute the campus and M-Lab measurements
-sequentially and leave one compact summary in the terminal. During a test, an
-inline terminal UI will redraw a fixed block instead of printing an expanding
-stream of status lines.
+The `campus` command currently executes the NJU LibreSpeed measurement. Running
+bare `njuprobe`, `run`, or `mlab` remains unavailable until the NDT7 provider is
+implemented. The final interactive implementation will redraw a fixed inline
+block instead of printing an expanding stream of status lines.
 
 ## Privacy
 

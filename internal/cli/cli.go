@@ -129,11 +129,6 @@ func (app *App) executeMeasurement(ctx context.Context, command model.Command, a
 		return app.fail(jsonMode, "invalid_arguments", err.Error(), 1)
 	}
 
-	if command == model.CommandRun || command == model.CommandMLab {
-		if exitCode := app.ensureMLabConsent(jsonMode); exitCode != 0 {
-			return exitCode
-		}
-	}
 	if app.Runner == nil {
 		return app.fail(jsonMode, "internal_error", "measurement runner is not configured", 1)
 	}
@@ -150,13 +145,20 @@ func (app *App) executeMeasurement(ctx context.Context, command model.Command, a
 		request.IPFamily = "ipv6"
 	}
 
+	if preflight, ok := app.Runner.(provider.PreflightRunner); ok {
+		if err := preflight.Preflight(request); err != nil {
+			return app.fail(jsonMode, measurementErrorCode(err), err.Error(), 1)
+		}
+	}
+	if command == model.CommandRun || command == model.CommandMLab {
+		if exitCode := app.ensureMLabConsent(jsonMode); exitCode != 0 {
+			return exitCode
+		}
+	}
+
 	summary, err := app.Runner.Run(ctx, request)
 	if err != nil {
-		code := "measurement_unavailable"
-		if !errors.Is(err, provider.ErrUnavailable) {
-			code = "measurement_error"
-		}
-		return app.fail(jsonMode, code, err.Error(), 1)
+		return app.fail(jsonMode, measurementErrorCode(err), err.Error(), 1)
 	}
 	if summary.SchemaVersion == 0 {
 		summary.SchemaVersion = model.SchemaVersion
@@ -442,6 +444,13 @@ func (app *App) writeValue(jsonMode bool, value any, plain string) int {
 		fmt.Fprintln(app.Out, plain)
 	}
 	return 0
+}
+
+func measurementErrorCode(err error) string {
+	if errors.Is(err, provider.ErrUnavailable) {
+		return "measurement_unavailable"
+	}
+	return "measurement_error"
 }
 
 func optionalString(value string) *string {

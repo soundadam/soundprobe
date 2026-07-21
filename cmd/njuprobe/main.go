@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 
 	"github.com/soundadam/njuprobe/internal/buildinfo"
 	"github.com/soundadam/njuprobe/internal/cli"
 	"github.com/soundadam/njuprobe/internal/consent"
+	"github.com/soundadam/njuprobe/internal/helper"
 	"github.com/soundadam/njuprobe/internal/provider"
+	"github.com/soundadam/njuprobe/internal/provider/campus"
 	"github.com/soundadam/njuprobe/internal/storage"
 )
 
@@ -25,6 +28,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	helperResolver := helper.NewResolver()
+	measurementRunner := provider.SummaryRunner{
+		ToolVersion: buildinfo.Version,
+		Campus:      campus.New(helperResolver),
+	}
+
 	app := &cli.App{
 		In:        os.Stdin,
 		Out:       os.Stdout,
@@ -32,12 +41,15 @@ func main() {
 		StdinTTY:  isTerminal(os.Stdin),
 		StdoutTTY: isTerminal(os.Stdout),
 		Version:   buildinfo.Version,
-		Runner:    provider.UnavailableRunner{},
+		Runner:    measurementRunner,
 		History:   storage.New(historyDir),
 		Consent:   consent.New(consentPath),
 	}
 
-	os.Exit(app.Execute(context.Background(), os.Args[1:]))
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	exitCode := app.Execute(ctx, os.Args[1:])
+	stop()
+	os.Exit(exitCode)
 }
 
 func isTerminal(file *os.File) bool {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,9 +17,15 @@ import (
 )
 
 type fakeRunner struct {
-	request provider.Request
-	summary model.RunSummary
-	err     error
+	request      provider.Request
+	preflightErr error
+	summary      model.RunSummary
+	err          error
+}
+
+func (runner *fakeRunner) Preflight(request provider.Request) error {
+	runner.request = request
+	return runner.preflightErr
 }
 
 func (runner *fakeRunner) Run(_ context.Context, request provider.Request) (model.RunSummary, error) {
@@ -68,6 +75,25 @@ func TestCampusIPFlagsAreMutuallyExclusive(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "mutually exclusive") {
 		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestUnavailableMLabFailsBeforeConsent(t *testing.T) {
+	runner := &fakeRunner{preflightErr: fmt.Errorf("%w: mlab", provider.ErrUnavailable)}
+	app, stdout, _ := newTestApp(t, runner)
+	exitCode := app.Execute(context.Background(), []string{"mlab", "--json"})
+	if exitCode != 1 {
+		t.Fatalf("exit code = %d, want 1", exitCode)
+	}
+	if !strings.Contains(stdout.String(), "measurement_unavailable") || strings.Contains(stdout.String(), "consent_required") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+	_, accepted, err := app.Consent.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if accepted {
+		t.Fatal("consent was unexpectedly recorded")
 	}
 }
 

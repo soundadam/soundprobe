@@ -1,18 +1,21 @@
-# Third-party component plan
+# Third-party components
 
-The planning-only initial commit contains no third-party source or binaries.
-The implementation is expected to use the following pinned components as
-separate executables or libraries while preserving their notices and licenses.
+No third-party source or binaries are committed to this repository. External
+helpers are pinned, built separately, and invoked through process interfaces
+while preserving their upstream notices and licenses.
 
 ## LibreSpeed CLI
 
 - Project: <https://github.com/librespeed/speedtest-cli>
-- Planned version: `v1.0.13`
+- Pinned version: `v1.0.13`
+- Pinned commit: `2f2408764d88e9601aa64a03b340f8e3151003e4`
 - License: GNU Lesser General Public License v3.0
 - Integration: separately built helper executable under `libexec/njuprobe`
 
-NJUProbe must communicate with this helper through its process and JSON
-interface. The helper must not be statically linked into the MIT executable.
+NJUProbe communicates with this helper through its process and JSON interface.
+The helper is not statically linked into the MIT executable. Development builds
+are installed under `.tools/bin` by `scripts/install-dev-tools.sh`; release
+packaging will place the separate executable under `libexec/njuprobe`.
 
 ## M-Lab ndt7-client-go
 

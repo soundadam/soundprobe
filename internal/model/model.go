@@ -23,6 +23,11 @@ const (
 	ProviderMLab   Provider = "mlab"
 )
 
+const (
+	MethodLibreSpeedThreeStream = "librespeed-three-stream"
+	MethodNDT7SingleStream      = "ndt7-single-stream"
+)
+
 type RunStatus string
 
 const (
@@ -78,6 +83,7 @@ type Measurement struct {
 	Status         ProviderStatus `json:"status"`
 	IPFamily       *string        `json:"ipFamily"`
 	ServerName     *string        `json:"serverName"`
+	ServerFQDN     *string        `json:"serverFqdn"`
 	ServerAddress  *string        `json:"serverAddress"`
 	ClientPublicIP *string        `json:"clientPublicIp"`
 	PingMS         *float64       `json:"pingMs"`
@@ -190,9 +196,9 @@ func (provider Provider) valid() bool {
 func (provider Provider) method() string {
 	switch provider {
 	case ProviderCampus:
-		return "librespeed-three-stream"
+		return MethodLibreSpeedThreeStream
 	case ProviderMLab:
-		return "ndt7-single-stream"
+		return MethodNDT7SingleStream
 	default:
 		return ""
 	}
