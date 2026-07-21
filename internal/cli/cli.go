@@ -1,0 +1,466 @@
+package cli
+
+import (
+	"bufio"
+	"context"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"strings"
+	"text/tabwriter"
+	"time"
+
+	"github.com/soundadam/njuprobe/internal/consent"
+	"github.com/soundadam/njuprobe/internal/exporter"
+	"github.com/soundadam/njuprobe/internal/model"
+	"github.com/soundadam/njuprobe/internal/provider"
+	"github.com/soundadam/njuprobe/internal/storage"
+)
+
+const usage = `NJUProbe compares the NJU campus path with M-Lab NDT7.
+
+Usage:
+  njuprobe [--json]
+  njuprobe run [--label TEXT] [--note TEXT] [--no-save]
+  njuprobe campus [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
+  njuprobe mlab [--label TEXT] [--note TEXT] [--no-save]
+  njuprobe history [--limit N]
+  njuprobe show RUN_ID [--json]
+  njuprobe export --format jsonl|csv --output PATH
+  njuprobe consent status|accept|revoke
+  njuprobe version
+`
+
+type App struct {
+	In        io.Reader
+	Out       io.Writer
+	Err       io.Writer
+	StdinTTY  bool
+	StdoutTTY bool
+	Version   string
+	Runner    provider.Runner
+	History   *storage.Store
+	Consent   *consent.Store
+	Now       func() time.Time
+}
+
+type commandOptions struct {
+	label  string
+	note   string
+	noSave bool
+	ipv4   bool
+	ipv6   bool
+}
+
+func (app *App) Execute(ctx context.Context, args []string) int {
+	app.setDefaults()
+	args, jsonMode := extractGlobalJSON(args)
+
+	if len(args) == 0 {
+		return app.executeMeasurement(ctx, model.CommandRun, nil, jsonMode)
+	}
+
+	command := args[0]
+	rest := args[1:]
+	switch command {
+	case "help", "--help", "-h":
+		fmt.Fprint(app.Out, usage)
+		return 0
+	case "version":
+		if len(rest) != 0 {
+			return app.fail(jsonMode, "invalid_arguments", "version does not accept arguments", 1)
+		}
+		return app.writeValue(jsonMode, map[string]string{"version": app.Version}, "NJUProbe "+app.Version)
+	case "run":
+		return app.executeMeasurement(ctx, model.CommandRun, rest, jsonMode)
+	case "campus":
+		return app.executeMeasurement(ctx, model.CommandCampus, rest, jsonMode)
+	case "mlab":
+		return app.executeMeasurement(ctx, model.CommandMLab, rest, jsonMode)
+	case "history":
+		return app.executeHistory(rest, jsonMode)
+	case "show":
+		return app.executeShow(rest, jsonMode)
+	case "export":
+		return app.executeExport(rest, jsonMode)
+	case "consent":
+		return app.executeConsent(rest, jsonMode)
+	default:
+		return app.fail(jsonMode, "unknown_command", fmt.Sprintf("unknown command %q", command), 1)
+	}
+}
+
+func (app *App) setDefaults() {
+	if app.In == nil {
+		app.In = strings.NewReader("")
+	}
+	if app.Out == nil {
+		app.Out = io.Discard
+	}
+	if app.Err == nil {
+		app.Err = io.Discard
+	}
+	if app.Version == "" {
+		app.Version = "dev"
+	}
+	if app.Now == nil {
+		app.Now = time.Now
+	}
+}
+
+func extractGlobalJSON(args []string) ([]string, bool) {
+	filtered := make([]string, 0, len(args))
+	jsonMode := false
+	for _, arg := range args {
+		if arg == "--json" {
+			jsonMode = true
+			continue
+		}
+		filtered = append(filtered, arg)
+	}
+	return filtered, jsonMode
+}
+
+func (app *App) executeMeasurement(ctx context.Context, command model.Command, args []string, jsonMode bool) int {
+	options, err := app.parseMeasurementFlags(command, args, jsonMode)
+	if err != nil {
+		return app.fail(jsonMode, "invalid_arguments", err.Error(), 1)
+	}
+
+	if command == model.CommandRun || command == model.CommandMLab {
+		if exitCode := app.ensureMLabConsent(jsonMode); exitCode != 0 {
+			return exitCode
+		}
+	}
+	if app.Runner == nil {
+		return app.fail(jsonMode, "internal_error", "measurement runner is not configured", 1)
+	}
+
+	request := provider.Request{
+		Command: command,
+		Label:   optionalString(options.label),
+		Note:    optionalString(options.note),
+	}
+	if options.ipv4 {
+		request.IPFamily = "ipv4"
+	}
+	if options.ipv6 {
+		request.IPFamily = "ipv6"
+	}
+
+	summary, err := app.Runner.Run(ctx, request)
+	if err != nil {
+		code := "measurement_unavailable"
+		if !errors.Is(err, provider.ErrUnavailable) {
+			code = "measurement_error"
+		}
+		return app.fail(jsonMode, code, err.Error(), 1)
+	}
+	if summary.SchemaVersion == 0 {
+		summary.SchemaVersion = model.SchemaVersion
+	}
+	if summary.ToolVersion == "" {
+		summary.ToolVersion = app.Version
+	}
+	if summary.Command == "" {
+		summary.Command = command
+	}
+	if summary.Status == "" {
+		summary.Status = model.DeriveRunStatus(summary.Measurements)
+	}
+
+	if !options.noSave {
+		if app.History == nil {
+			return app.fail(jsonMode, "storage_error", "history store is not configured", 1)
+		}
+		if err := app.History.Save(summary); err != nil {
+			return app.fail(jsonMode, "storage_error", err.Error(), 1)
+		}
+	}
+
+	if jsonMode {
+		if err := json.NewEncoder(app.Out).Encode(summary); err != nil {
+			return 1
+		}
+	} else {
+		app.renderSummary(summary)
+	}
+	return summary.ExitCode()
+}
+
+func (app *App) parseMeasurementFlags(command model.Command, args []string, jsonMode bool) (commandOptions, error) {
+	var options commandOptions
+	flags := flag.NewFlagSet(string(command), flag.ContinueOnError)
+	if jsonMode {
+		flags.SetOutput(io.Discard)
+	} else {
+		flags.SetOutput(app.Err)
+	}
+	flags.StringVar(&options.label, "label", "", "optional run label")
+	flags.StringVar(&options.note, "note", "", "optional run note")
+	flags.BoolVar(&options.noSave, "no-save", false, "do not persist the result")
+	if command == model.CommandCampus {
+		flags.BoolVar(&options.ipv4, "ipv4", false, "use the IPv4 campus service")
+		flags.BoolVar(&options.ipv6, "ipv6", false, "use the IPv6 campus service")
+	}
+	if err := flags.Parse(args); err != nil {
+		return commandOptions{}, err
+	}
+	if flags.NArg() != 0 {
+		return commandOptions{}, fmt.Errorf("unexpected arguments: %s", strings.Join(flags.Args(), " "))
+	}
+	if options.ipv4 && options.ipv6 {
+		return commandOptions{}, errors.New("--ipv4 and --ipv6 are mutually exclusive")
+	}
+	return options, nil
+}
+
+func (app *App) executeHistory(args []string, jsonMode bool) int {
+	flags := flag.NewFlagSet("history", flag.ContinueOnError)
+	if jsonMode {
+		flags.SetOutput(io.Discard)
+	} else {
+		flags.SetOutput(app.Err)
+	}
+	limit := flags.Int("limit", 20, "maximum number of runs; zero means all")
+	if err := flags.Parse(args); err != nil {
+		return app.fail(jsonMode, "invalid_arguments", err.Error(), 1)
+	}
+	if flags.NArg() != 0 {
+		return app.fail(jsonMode, "invalid_arguments", "history does not accept positional arguments", 1)
+	}
+	if *limit < 0 {
+		return app.fail(jsonMode, "invalid_arguments", "history limit must be non-negative", 1)
+	}
+	if app.History == nil {
+		return app.fail(jsonMode, "storage_error", "history store is not configured", 1)
+	}
+	summaries, err := app.History.List(*limit)
+	if err != nil {
+		return app.fail(jsonMode, "storage_error", err.Error(), 1)
+	}
+	if jsonMode {
+		if err := json.NewEncoder(app.Out).Encode(summaries); err != nil {
+			return 1
+		}
+		return 0
+	}
+	app.renderHistory(summaries)
+	return 0
+}
+
+func (app *App) executeShow(args []string, jsonMode bool) int {
+	if len(args) != 1 {
+		return app.fail(jsonMode, "invalid_arguments", "show requires exactly one RUN_ID", 1)
+	}
+	if app.History == nil {
+		return app.fail(jsonMode, "storage_error", "history store is not configured", 1)
+	}
+	summary, err := app.History.Load(args[0])
+	if err != nil {
+		return app.fail(jsonMode, "storage_error", err.Error(), 1)
+	}
+	if jsonMode {
+		if err := json.NewEncoder(app.Out).Encode(summary); err != nil {
+			return 1
+		}
+	} else {
+		app.renderSummary(summary)
+	}
+	return 0
+}
+
+func (app *App) executeExport(args []string, jsonMode bool) int {
+	flags := flag.NewFlagSet("export", flag.ContinueOnError)
+	if jsonMode {
+		flags.SetOutput(io.Discard)
+	} else {
+		flags.SetOutput(app.Err)
+	}
+	format := flags.String("format", "", "jsonl or csv")
+	output := flags.String("output", "", "output path")
+	if err := flags.Parse(args); err != nil {
+		return app.fail(jsonMode, "invalid_arguments", err.Error(), 1)
+	}
+	if flags.NArg() != 0 || (*format != "jsonl" && *format != "csv") || *output == "" {
+		return app.fail(jsonMode, "invalid_arguments", "export requires --format jsonl|csv and --output PATH", 1)
+	}
+	if app.History == nil {
+		return app.fail(jsonMode, "storage_error", "history store is not configured", 1)
+	}
+	summaries, err := app.History.List(0)
+	if err != nil {
+		return app.fail(jsonMode, "storage_error", err.Error(), 1)
+	}
+	if err := exporter.Write(*output, *format, summaries); err != nil {
+		return app.fail(jsonMode, "export_error", err.Error(), 1)
+	}
+	return app.writeValue(jsonMode, map[string]any{
+		"format": *format,
+		"output": *output,
+		"runs":   len(summaries),
+	}, fmt.Sprintf("Exported %d runs to %s", len(summaries), *output))
+}
+
+func (app *App) executeConsent(args []string, jsonMode bool) int {
+	if len(args) != 1 {
+		return app.fail(jsonMode, "invalid_arguments", "consent requires status, accept, or revoke", 1)
+	}
+	if app.Consent == nil {
+		return app.fail(jsonMode, "consent_error", "consent store is not configured", 1)
+	}
+	switch args[0] {
+	case "status":
+		record, accepted, err := app.Consent.Status()
+		if err != nil {
+			return app.fail(jsonMode, "consent_error", err.Error(), 1)
+		}
+		if jsonMode {
+			payload := map[string]any{"accepted": accepted, "policyVersion": consent.PolicyVersion}
+			if !record.AcceptedAt.IsZero() {
+				payload["record"] = record
+			}
+			return app.writeValue(true, payload, "")
+		}
+		if accepted {
+			fmt.Fprintf(app.Out, "M-Lab consent accepted (%s at %s).\n", record.PolicyVersion, record.AcceptedAt.Format(time.RFC3339))
+		} else {
+			fmt.Fprintf(app.Out, "M-Lab consent is not accepted for current policy %s.\n", consent.PolicyVersion)
+		}
+		return 0
+	case "accept":
+		if jsonMode {
+			return app.fail(true, "consent_requires_interaction", "consent accept is interactive and unavailable in JSON mode", 1)
+		}
+		return app.promptAndAcceptConsent(false)
+	case "revoke":
+		if err := app.Consent.Revoke(); err != nil {
+			return app.fail(jsonMode, "consent_error", err.Error(), 1)
+		}
+		return app.writeValue(jsonMode, map[string]bool{"revoked": true}, "M-Lab consent revoked.")
+	default:
+		return app.fail(jsonMode, "invalid_arguments", "consent requires status, accept, or revoke", 1)
+	}
+}
+
+func (app *App) ensureMLabConsent(jsonMode bool) int {
+	if app.Consent == nil {
+		return app.fail(jsonMode, "consent_error", "consent store is not configured", 1)
+	}
+	_, accepted, err := app.Consent.Status()
+	if err != nil {
+		return app.fail(jsonMode, "consent_error", err.Error(), 1)
+	}
+	if accepted {
+		return 0
+	}
+	if jsonMode || !app.StdinTTY {
+		return app.fail(jsonMode, "consent_required", "M-Lab consent is required; run `njuprobe consent accept` interactively", 1)
+	}
+	return app.promptAndAcceptConsent(jsonMode)
+}
+
+func (app *App) promptAndAcceptConsent(jsonMode bool) int {
+	if !app.StdinTTY {
+		return app.fail(jsonMode, "consent_requires_interaction", "consent acceptance requires an interactive terminal", 1)
+	}
+	fmt.Fprintf(app.Out, "M-Lab collects the ISP-provided public IP address and measurement results.\n")
+	fmt.Fprintf(app.Out, "M-Lab publishes and retains experiment data indefinitely. Policy: %s.\n", consent.PolicyVersion)
+	fmt.Fprint(app.Out, "Type accept to continue: ")
+	scanner := bufio.NewScanner(app.In)
+	if !scanner.Scan() {
+		return app.fail(jsonMode, "consent_declined", "consent was not accepted", 1)
+	}
+	if strings.TrimSpace(scanner.Text()) != "accept" {
+		return app.fail(jsonMode, "consent_declined", "consent was not accepted", 1)
+	}
+	record, err := app.Consent.Accept(app.Version, app.Now())
+	if err != nil {
+		return app.fail(jsonMode, "consent_error", err.Error(), 1)
+	}
+	fmt.Fprintf(app.Out, "M-Lab consent recorded for policy %s.\n", record.PolicyVersion)
+	return 0
+}
+
+func (app *App) renderSummary(summary model.RunSummary) {
+	fmt.Fprintf(app.Out, "NJUProbe %s\n", summary.ToolVersion)
+	fmt.Fprintf(app.Out, "Run %s  %s\n", summary.RunID, summary.Status)
+	writer := tabwriter.NewWriter(app.Out, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(writer, "PROVIDER\tMETHOD\tDOWNLOAD\tUPLOAD\tSTATUS")
+	for _, measurement := range summary.Measurements {
+		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\n",
+			measurement.Provider,
+			measurement.Method,
+			formatMbps(measurement.DownloadMbps),
+			formatMbps(measurement.UploadMbps),
+			measurement.Status,
+		)
+	}
+	_ = writer.Flush()
+}
+
+func (app *App) renderHistory(summaries []model.RunSummary) {
+	if len(summaries) == 0 {
+		fmt.Fprintln(app.Out, "No saved runs.")
+		return
+	}
+	writer := tabwriter.NewWriter(app.Out, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(writer, "RUN ID\tSTARTED\tCOMMAND\tSTATUS\tLABEL")
+	for _, summary := range summaries {
+		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\n",
+			summary.RunID,
+			summary.StartedAt.Local().Format("2006-01-02 15:04:05"),
+			summary.Command,
+			summary.Status,
+			valueOrEmpty(summary.Label),
+		)
+	}
+	_ = writer.Flush()
+}
+
+func (app *App) fail(jsonMode bool, code, message string, exitCode int) int {
+	if jsonMode {
+		_ = json.NewEncoder(app.Out).Encode(map[string]any{
+			"error": map[string]string{"code": code, "message": message},
+		})
+	} else {
+		fmt.Fprintf(app.Err, "njuprobe: %s\n", message)
+	}
+	return exitCode
+}
+
+func (app *App) writeValue(jsonMode bool, value any, plain string) int {
+	if jsonMode {
+		if err := json.NewEncoder(app.Out).Encode(value); err != nil {
+			return 1
+		}
+		return 0
+	}
+	if plain != "" {
+		fmt.Fprintln(app.Out, plain)
+	}
+	return 0
+}
+
+func optionalString(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func valueOrEmpty(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}
+
+func formatMbps(value *float64) string {
+	if value == nil {
+		return "—"
+	}
+	return fmt.Sprintf("%.2f Mbps", *value)
+}

@@ -12,10 +12,26 @@ of those products' routing configuration.
 
 ## Repository status
 
-This initial repository contains the decision-complete v0.1 specification only.
+The v0.1 implementation is in progress. The repository now contains the Go CLI
+foundation, stable result schema, consent and history persistence, JSON/plain
+output paths, export support, and provider interfaces. The real LibreSpeed and
+NDT7 helper integrations and interactive renderer are not implemented yet.
+
+Routine development must follow [SPEC.md](SPEC.md) and [AGENTS.md](AGENTS.md).
 No executable, helper binary, release artifact, or Homebrew Formula has been
-implemented or published yet. Implementation must follow [SPEC.md](SPEC.md) and
-[AGENTS.md](AGENTS.md).
+published.
+
+## Development
+
+```text
+make check
+make build
+./bin/njuprobe version
+```
+
+The foundation build deliberately fails measurement commands before contacting
+any provider. Automated tests use injected fake providers and never run a real
+bandwidth test.
 
 ## Intended command surface
 
