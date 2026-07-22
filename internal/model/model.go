@@ -235,6 +235,24 @@ func (measurement Measurement) validateValues() error {
 	if err := validateNonnegative("jitter milliseconds", measurement.JitterMS); err != nil {
 		return err
 	}
+	if err := validateNonnegativeInt64("download bytes", measurement.DownloadBytes); err != nil {
+		return err
+	}
+	if err := validateNonnegativeInt64("upload bytes", measurement.UploadBytes); err != nil {
+		return err
+	}
+	if err := validateNonnegativeInt64("duration milliseconds", measurement.DurationMS); err != nil {
+		return err
+	}
+	if measurement.Concurrency != nil && *measurement.Concurrency <= 0 {
+		return errors.New("concurrency must be positive")
+	}
+	if measurement.IPFamily != nil && *measurement.IPFamily != "ipv4" && *measurement.IPFamily != "ipv6" {
+		return fmt.Errorf("invalid IP family %q", *measurement.IPFamily)
+	}
+	if measurement.HelperVersion != nil && *measurement.HelperVersion == "" {
+		return errors.New("helper version must not be empty")
+	}
 
 	switch measurement.Status {
 	case ProviderStatusSuccess:
@@ -286,6 +304,13 @@ func (stage FailureStage) valid() bool {
 }
 
 func validateNonnegative(name string, value *float64) error {
+	if value != nil && *value < 0 {
+		return fmt.Errorf("%s must be non-negative", name)
+	}
+	return nil
+}
+
+func validateNonnegativeInt64(name string, value *int64) error {
 	if value != nil && *value < 0 {
 		return fmt.Errorf("%s must be non-negative", name)
 	}

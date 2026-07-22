@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -37,10 +38,27 @@ type Runner struct {
 	Timeout        time.Duration
 	VersionTimeout time.Duration
 	Now            func() time.Time
+
+	prepareMu sync.Mutex
+	prepared  *preparedHelper
+}
+
+type preparedHelper struct {
+	resolved helper.Resolved
+	version  string
 }
 
 func New(resolver HelperResolver) *Runner {
 	return &Runner{Resolver: resolver}
+}
+
+func (runner *Runner) Preflight(ctx context.Context, request provider.Request) error {
+	runner.setDefaults()
+	if _, _, _, err := selectedServer(request.IPFamily); err != nil {
+		return err
+	}
+	_, _, err := runner.prepareHelper(ctx)
+	return err
 }
 
 func (runner *Runner) Measure(ctx context.Context, request provider.Request) (model.Measurement, error) {
@@ -49,20 +67,14 @@ func (runner *Runner) Measure(ctx context.Context, request provider.Request) (mo
 	if err != nil {
 		return model.Measurement{}, err
 	}
-	if runner.Resolver == nil {
-		return model.Measurement{}, fmt.Errorf("%w: LibreSpeed helper resolver is not configured", provider.ErrUnavailable)
-	}
-	resolved, err := runner.Resolver.Resolve(HelperName)
-	if err != nil {
-		return model.Measurement{}, fmt.Errorf("%w: resolve LibreSpeed helper: %v", provider.ErrUnavailable, err)
-	}
-	helperVersion, err := runner.probeVersion(ctx, resolved.Path)
+	resolved, helperVersion, err := runner.prepareHelper(ctx)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return cancelledMeasurement(family, "", 0), nil
 		}
 		return model.Measurement{}, err
 	}
+	request.Report(provider.ProgressEvent{Provider: model.ProviderCampus, Phase: provider.ProgressMeasuring})
 
 	measurementCtx, cancel := context.WithTimeout(ctx, runner.Timeout)
 	defer cancel()
@@ -116,6 +128,27 @@ func (runner *Runner) Measure(ctx context.Context, request provider.Request) (mo
 		return model.Measurement{}, errors.New("LibreSpeed helper returned an unexpected campus server")
 	}
 	return measurement, nil
+}
+
+func (runner *Runner) prepareHelper(ctx context.Context) (helper.Resolved, string, error) {
+	runner.prepareMu.Lock()
+	defer runner.prepareMu.Unlock()
+	if runner.prepared != nil {
+		return runner.prepared.resolved, runner.prepared.version, nil
+	}
+	if runner.Resolver == nil {
+		return helper.Resolved{}, "", fmt.Errorf("%w: LibreSpeed helper resolver is not configured", provider.ErrUnavailable)
+	}
+	resolved, err := runner.Resolver.Resolve(HelperName)
+	if err != nil {
+		return helper.Resolved{}, "", fmt.Errorf("%w: resolve LibreSpeed helper: %v", provider.ErrUnavailable, err)
+	}
+	version, err := runner.probeVersion(ctx, resolved.Path)
+	if err != nil {
+		return helper.Resolved{}, "", err
+	}
+	runner.prepared = &preparedHelper{resolved: resolved, version: version}
+	return resolved, version, nil
 }
 
 func (runner *Runner) setDefaults() {

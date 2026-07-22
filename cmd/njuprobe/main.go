@@ -10,8 +10,10 @@ import (
 	"github.com/soundadam/njuprobe/internal/cli"
 	"github.com/soundadam/njuprobe/internal/consent"
 	"github.com/soundadam/njuprobe/internal/helper"
+	"github.com/soundadam/njuprobe/internal/network"
 	"github.com/soundadam/njuprobe/internal/provider"
 	"github.com/soundadam/njuprobe/internal/provider/campus"
+	"github.com/soundadam/njuprobe/internal/provider/mlab"
 	"github.com/soundadam/njuprobe/internal/storage"
 )
 
@@ -32,6 +34,8 @@ func main() {
 	measurementRunner := provider.SummaryRunner{
 		ToolVersion: buildinfo.Version,
 		Campus:      campus.New(helperResolver),
+		MLab:        mlab.New(helperResolver),
+		Snapshot:    network.Snapshot,
 	}
 
 	app := &cli.App{

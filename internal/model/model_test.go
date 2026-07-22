@@ -68,6 +68,45 @@ func TestRunStatusMustMatchMeasurements(t *testing.T) {
 	}
 }
 
+func TestMeasurementMetadataValidation(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Measurement)
+	}{
+		{name: "negative bytes", mutate: func(measurement *Measurement) { measurement.DownloadBytes = Pointer(int64(-1)) }},
+		{name: "negative duration", mutate: func(measurement *Measurement) { measurement.DurationMS = Pointer(int64(-1)) }},
+		{name: "zero concurrency", mutate: func(measurement *Measurement) { measurement.Concurrency = Pointer(0) }},
+		{name: "invalid family", mutate: func(measurement *Measurement) { measurement.IPFamily = Pointer("ipv5") }},
+		{name: "empty helper version", mutate: func(measurement *Measurement) { measurement.HelperVersion = Pointer("") }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			now := testTime()
+			measurement := Measurement{
+				Provider:     ProviderCampus,
+				Method:       MethodLibreSpeedThreeStream,
+				Status:       ProviderStatusSuccess,
+				DownloadMbps: Pointer(100.0),
+				UploadMbps:   Pointer(50.0),
+			}
+			test.mutate(&measurement)
+			summary := RunSummary{
+				SchemaVersion: SchemaVersion,
+				RunID:         "run-1",
+				ToolVersion:   "dev",
+				StartedAt:     now,
+				EndedAt:       now,
+				Command:       CommandCampus,
+				Status:        RunStatusSuccess,
+				Measurements:  []Measurement{measurement},
+			}
+			if err := summary.Validate(); err == nil {
+				t.Fatal("Validate() succeeded for invalid metadata")
+			}
+		})
+	}
+}
+
 func TestFailedMeasurementRequiresZeroOrMeasuredSpeeds(t *testing.T) {
 	now := testTime()
 	summary := RunSummary{

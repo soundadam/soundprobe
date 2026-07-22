@@ -1,108 +1,259 @@
 # Testing NJUProbe
 
-## 1. Fully offline verification
+Routine tests never contact NJU or M-Lab. Real bandwidth tests are explicit
+operator acceptance steps.
 
-These commands do not contact NJU or M-Lab and do not consume bandwidth beyond
-normal dependency access already required by the Go toolchain:
-
-```sh
-make check
-make test-campus-provider
-make test-campus-fixture
-```
-
-`make test-campus-fixture` builds the real `njuprobe` executable, copies it to a
-temporary directory, places a mock `librespeed-cli` on `PATH`, and runs both:
-
-```text
-njuprobe campus --no-save --json
-njuprobe campus --ipv6 --no-save --json
-```
-
-The mock helper returns committed sanitized fixtures. The script verifies a
-successful result, the selected IP family, the pinned helper version, and the
-absence of ANSI escapes in JSON output.
-
-Run the complete offline gate with one command:
+## 1. Complete offline gate
 
 ```sh
 make test-offline
 ```
 
-## 2. Install the pinned development helper
-
-This downloads the exact LibreSpeed CLI source tag and commit, builds it as a
-separate executable, and installs it under the ignored `.tools/bin` directory:
-
-```sh
-make tools
-.tools/bin/librespeed-cli --version
-```
-
-The expected first line is:
+This runs:
 
 ```text
-librespeed-cli v1.0.13 (...)
+go test ./...
+go vet ./...
+scripts/test-campus-fixture.sh
+scripts/test-run-fixture.sh
+scripts/test-homebrew-template.sh
 ```
 
-Helper discovery uses this order:
+The fixtures exercise the real `njuprobe` executable with mock helper processes
+and verify:
 
-1. `../libexec/njuprobe` relative to the installed `njuprobe` executable;
-2. repository-local `.tools/bin`;
-3. `PATH` as an explicitly documented developer fallback.
+- NJU IPv4 and explicit IPv6 selection;
+- M-Lab JSON event parsing and final summary parsing;
+- campus-to-M-Lab sequential ordering;
+- success, partial failure, timeout, malformed output, and cancellation;
+- stable exit codes and zero-versus-null semantics;
+- `doctor`, saved history, `last`, and `history`;
+- JSON output without ANSI escape sequences;
+- Homebrew Formula template resources and unresolved placeholders.
 
-A broken higher-priority helper fails closed instead of silently selecting a
-newer executable from `PATH`.
+Focused provider tests:
 
-## 3. Real NJU operator acceptance
+```sh
+make test-campus-provider
+make test-mlab-provider
+```
 
-The commands in this section perform a real upload and download test and consume
-network bandwidth. Start with an unsaved JSON run:
+Race detector:
+
+```sh
+GOTOOLCHAIN=auto go test -race ./...
+```
+
+## 2. Build and diagnose the pinned helpers
+
+NJUProbe uses separately installed helper executables:
 
 ```sh
 make tools
 make build
+./bin/njuprobe doctor
+```
+
+Expected diagnostics:
+
+```text
+Campus   ready
+M-Lab    ready
+```
+
+Inspect pinned versions:
+
+```sh
+.tools/bin/librespeed-cli --version | head -1
+cat .tools/bin/ndt7-client.version
+```
+
+Expected values:
+
+```text
+librespeed-cli v1.0.13 (...)
+v0.10.1
+```
+
+Helper discovery order is:
+
+1. `../libexec/njuprobe` relative to the installed executable;
+2. repository-local `.tools/bin`;
+3. `PATH` as a documented developer fallback.
+
+A broken higher-priority helper fails closed instead of silently selecting a
+newer executable.
+
+## 3. First-run consent
+
+Before a combined or M-Lab-only test:
+
+```sh
+./bin/njuprobe consent status
+./bin/njuprobe consent accept
+./bin/njuprobe consent status
+```
+
+Acceptance requires an interactive terminal and the exact word `accept`.
+Noninteractive or JSON execution without a current record fails before M-Lab is
+contacted.
+
+Revoke the local record with:
+
+```sh
+./bin/njuprobe consent revoke
+```
+
+## 4. Real operator acceptance
+
+The following commands perform real uploads and downloads.
+
+### NJU only
+
+```sh
 ./bin/njuprobe campus --no-save --json
 printf 'exit code: %s\n' "$?"
 ```
 
-Expected exit codes:
-
-- `0`: campus measurement completed;
-- `2`: the provider was attempted but failed, timed out, or was unreachable;
-- `1`: helper discovery, version, configuration, storage, or internal failure;
-- `130`: cancelled with Ctrl-C.
-
-Explicit IPv4 and IPv6 checks:
+Explicit families:
 
 ```sh
 ./bin/njuprobe campus --ipv4 --no-save --json
 ./bin/njuprobe campus --ipv6 --no-save --json
 ```
 
-The IPv6 command selects NJU server ID 2 and passes `--ipv6`; it does not fall
-back to server ID 1 or IPv4. An environment without functional IPv6 should
-therefore return a failed IPv6 measurement rather than a successful IPv4 result.
+The IPv6 command selects NJU server ID 2 and passes `--ipv6`. It must never
+silently return an IPv4 measurement. A machine without functional IPv6 should
+produce a failed IPv6 result with exit code `2`.
 
-To verify persistence and readback, omit `--no-save`:
+### M-Lab only
 
 ```sh
-./bin/njuprobe campus --label "operator-test" --note "real NJU acceptance"
-./bin/njuprobe history --limit 5
+./bin/njuprobe mlab --no-save --json
+printf 'exit code: %s\n' "$?"
+```
+
+Verify the result contains:
+
+```text
+provider: mlab
+method: ndt7-single-stream
+helperVersion: v0.10.1
+serverFqdn: an M-Lab server selected through Locate
+```
+
+### Combined daily run
+
+```sh
+./bin/njuprobe
+```
+
+The interactive view should remain one fixed block. NJU completes first; only
+then should M-Lab begin. On completion, the block is replaced by one durable
+summary containing both providers.
+
+For script-safe acceptance:
+
+```sh
+./bin/njuprobe run --no-save --json > /tmp/njuprobe.json
+python3 -m json.tool /tmp/njuprobe.json
+```
+
+The file must contain exactly one JSON document and no ANSI bytes.
+
+### Cancellation
+
+Start a test and press Ctrl-C:
+
+```sh
+./bin/njuprobe
+```
+
+Then inspect the shell status:
+
+```sh
+echo $?
+```
+
+Expected exit code: `130`. The active helper must stop, any later provider must
+be marked skipped, and the saved run status must be `cancelled`.
+
+## 5. History and high-frequency commands
+
+Run and save a labeled result:
+
+```sh
+./bin/njuprobe run \
+  --label "daily" \
+  --note "home Wi-Fi"
+```
+
+Read it back:
+
+```sh
+./bin/njuprobe last
+./bin/njuprobe last --json
+./bin/njuprobe history --limit 10
 ./bin/njuprobe show RUN_ID --json
 ```
 
-Replace `RUN_ID` with the identifier printed by the campus summary or history
-command. Saved files should be under:
+Export all history:
+
+```sh
+./bin/njuprobe export --format jsonl --output /tmp/njuprobe.jsonl
+./bin/njuprobe export --format csv --output /tmp/njuprobe.csv
+```
+
+macOS storage path:
 
 ```text
 ~/Library/Application Support/njuprobe/history/v1/
 ```
 
-Directories must have mode `0700`; summary files must have mode `0600`.
+Permission checks:
 
-## 4. Current iteration boundary
+```sh
+stat -f '%Sp %N' "$HOME/Library/Application Support/njuprobe/history/v1"
+stat -f '%Sp %N' "$HOME/Library/Application Support/njuprobe/history/v1/"*.json
+```
 
-The `campus` command is implemented. `mlab` and the combined bare/`run` command
-remain unavailable until the NDT7 provider is implemented. Automated and
-Formula tests must not run a real bandwidth measurement.
+Expected modes:
+
+```text
+directory: drwx------
+files:     -rw-------
+```
+
+## 6. Homebrew gate on macOS
+
+The Linux development gate validates Formula generation but cannot replace an
+actual Homebrew test. On a supported macOS machine:
+
+```sh
+make test-offline
+./scripts/test-homebrew-template.sh
+```
+
+After creating a stable release asset and rendering the Formula:
+
+```sh
+brew update
+brew audit --strict --new --formula ./dist/Formula/njuprobe.rb
+HOMEBREW_NO_INSTALL_FROM_API=1 \
+  brew install --build-from-source ./dist/Formula/njuprobe.rb
+brew test njuprobe
+brew uninstall njuprobe
+```
+
+The Formula test is offline. It checks `version`, `doctor --json`, and empty
+history only. It must never execute `njuprobe`, `run`, `campus`, or `mlab` as a
+measurement command.
+
+## Exit codes
+
+```text
+0    all requested measurements completed
+2    attempted provider failed, timed out, or combined result is partial
+1    helper, version, consent, configuration, storage, renderer, or internal error
+130  cancelled by the operator
+```

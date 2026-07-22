@@ -106,6 +106,27 @@ func TestResolverReturnsNotFound(t *testing.T) {
 	}
 }
 
+func TestReadVersionManifest(t *testing.T) {
+	executable := filepath.Join(t.TempDir(), "ndt7-client")
+	writeExecutable(t, executable)
+	if err := os.WriteFile(executable+".version", []byte("v0.10.1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	version, err := ReadVersionManifest(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != "v0.10.1" {
+		t.Fatalf("version = %q", version)
+	}
+	if err := os.WriteFile(executable+".version", []byte("invalid version\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadVersionManifest(executable); err == nil {
+		t.Fatal("ReadVersionManifest() accepted whitespace")
+	}
+}
+
 func writeExecutable(t *testing.T, path string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {

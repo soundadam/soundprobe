@@ -31,7 +31,12 @@
   LGPL LibreSpeed code into the MIT executable.
 - CI uses fixtures and mock helpers only. A real bandwidth test is an explicit
   operator acceptance step and must never run in routine tests or Formula tests.
-- This source repository is private. Do not add a public tap Formula that points
-  at private source or claim public installability. Publication requires a
-  separate owner decision and a reviewed distribution design.
+- The owner has approved a public Homebrew distribution path. Publish only from
+  an immutable, checksummed, stable source release. Start with the maintained
+  `soundadam/homebrew-tap`; do not claim inclusion in `homebrew/core` until an
+  upstream release is public, operator acceptance passes on supported macOS,
+  and Homebrew accepts the Formula.
+- Formula tests and release automation must remain offline with respect to NJU
+  and M-Lab. They may verify helper discovery, versions, storage, and command
+  output but must never perform a bandwidth measurement.
 

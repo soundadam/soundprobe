@@ -9,7 +9,10 @@ import (
 	"time"
 )
 
-const PolicyVersion = "v5-2026-05-03"
+const (
+	PolicyVersion = "v5-2026-05-03"
+	PolicyURL     = "https://www.measurementlab.net/privacy/"
+)
 
 type Record struct {
 	SchemaVersion int       `json:"schemaVersion"`

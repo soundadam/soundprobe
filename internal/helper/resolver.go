@@ -163,3 +163,18 @@ func isNJUProbeRepository(directory string) bool {
 	}
 	return strings.Contains(string(data), "module github.com/soundadam/njuprobe")
 }
+
+// ReadVersionManifest reads the required sidecar version for helpers that do
+// not expose a machine-readable version command. The manifest path is the
+// executable path with ".version" appended.
+func ReadVersionManifest(executablePath string) (string, error) {
+	data, err := os.ReadFile(executablePath + ".version")
+	if err != nil {
+		return "", fmt.Errorf("read helper version manifest: %w", err)
+	}
+	version := strings.TrimSpace(string(data))
+	if version == "" || strings.ContainsAny(version, "\r\n\t ") {
+		return "", errors.New("helper version manifest is invalid")
+	}
+	return version, nil
+}

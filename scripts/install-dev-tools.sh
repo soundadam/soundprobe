@@ -3,18 +3,55 @@ set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 TOOLS_DIR="$ROOT/.tools/bin"
-LIBRESPEED_VERSION="v1.0.13"
-LIBRESPEED_COMMIT="2f2408764d88e9601aa64a03b340f8e3151003e4"
-LIBRESPEED_REPOSITORY="https://github.com/librespeed/speedtest-cli.git"
-DESTINATION="$TOOLS_DIR/librespeed-cli"
 
-command -v git >/dev/null 2>&1 || {
-  echo "install-dev-tools: git is required" >&2
+LIBRESPEED_VERSION="v1.0.13"
+LIBRESPEED_ARCHIVE_SHA256="5ad938b61e3edc0ca95e2ccff0c06e97a69383f3cbb0243bd47b21b9865f9f55"
+LIBRESPEED_ARCHIVE_URL="https://codeload.github.com/librespeed/speedtest-cli/tar.gz/refs/tags/$LIBRESPEED_VERSION"
+
+NDT7_VERSION="v0.10.1"
+NDT7_ARCHIVE_SHA256="31b40268bd7a9d31bdb5507b7ade2fad2efb8abb9e7339d2f59e9cdee5340bef"
+NDT7_ARCHIVE_URL="https://codeload.github.com/m-lab/ndt7-client-go/tar.gz/refs/tags/$NDT7_VERSION"
+
+command -v curl >/dev/null 2>&1 || {
+  echo "install-dev-tools: curl is required" >&2
   exit 1
 }
 command -v go >/dev/null 2>&1 || {
   echo "install-dev-tools: Go is required" >&2
   exit 1
+}
+command -v tar >/dev/null 2>&1 || {
+  echo "install-dev-tools: tar is required" >&2
+  exit 1
+}
+
+checksum() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  else
+    echo "install-dev-tools: sha256sum or shasum is required" >&2
+    exit 1
+  fi
+}
+
+fetch() {
+  url=$1
+  output=$2
+  if ! curl -fsSL --retry 3 --connect-timeout 10 --max-time 120 -o "$output" "$url"; then
+    curl -4 -fsSL --retry 3 --connect-timeout 10 --max-time 120 -o "$output" "$url"
+  fi
+}
+
+verify_archive() {
+  archive=$1
+  expected=$2
+  actual=$(checksum "$archive")
+  if [ "$actual" != "$expected" ]; then
+    echo "install-dev-tools: archive checksum mismatch: got $actual, want $expected" >&2
+    exit 1
+  fi
 }
 
 mkdir -p "$TOOLS_DIR"
@@ -24,27 +61,23 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-source_dir="$workdir/speedtest-cli"
-git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$LIBRESPEED_VERSION" "$LIBRESPEED_REPOSITORY" "$source_dir"
-actual_commit=$(git -C "$source_dir" rev-parse HEAD)
-if [ "$actual_commit" != "$LIBRESPEED_COMMIT" ]; then
-  echo "install-dev-tools: LibreSpeed commit mismatch: got $actual_commit" >&2
-  exit 1
-fi
+librespeed_archive="$workdir/librespeed.tar.gz"
+librespeed_source="$workdir/librespeed"
+fetch "$LIBRESPEED_ARCHIVE_URL" "$librespeed_archive"
+verify_archive "$librespeed_archive" "$LIBRESPEED_ARCHIVE_SHA256"
+mkdir -p "$librespeed_source"
+tar -xzf "$librespeed_archive" --strip-components=1 -C "$librespeed_source"
 
-built_binary="$workdir/librespeed-cli"
-build_date="1970-01-01T00:00:00Z"
-ldflags="-w -s -X github.com/librespeed/speedtest-cli/defs.ProgName=librespeed-cli -X github.com/librespeed/speedtest-cli/defs.ProgVersion=$LIBRESPEED_VERSION -X github.com/librespeed/speedtest-cli/defs.BuildDate=$build_date"
+librespeed_binary="$workdir/librespeed-cli"
+librespeed_ldflags="-s -w -buildid= -X github.com/librespeed/speedtest-cli/defs.ProgName=librespeed-cli -X github.com/librespeed/speedtest-cli/defs.ProgVersion=$LIBRESPEED_VERSION -X github.com/librespeed/speedtest-cli/defs.BuildDate=1970-01-01T00:00:00Z"
 (
-  cd "$source_dir"
-  go build -trimpath -ldflags "$ldflags" -o "$built_binary" ./
+  cd "$librespeed_source"
+  GOTOOLCHAIN=auto go build -trimpath -ldflags "$librespeed_ldflags" -o "$librespeed_binary" ./
 )
+install -m 0755 "$librespeed_binary" "$TOOLS_DIR/.librespeed-cli.$$"
+mv -f "$TOOLS_DIR/.librespeed-cli.$$" "$TOOLS_DIR/librespeed-cli"
 
-temporary="$TOOLS_DIR/.librespeed-cli.$$"
-install -m 0755 "$built_binary" "$temporary"
-mv -f "$temporary" "$DESTINATION"
-
-first_line=$($DESTINATION --version | sed -n '1p')
+first_line=$($TOOLS_DIR/librespeed-cli --version | sed -n '1p')
 case "$first_line" in
   "librespeed-cli $LIBRESPEED_VERSION "*) ;;
   *)
@@ -53,4 +86,24 @@ case "$first_line" in
     ;;
 esac
 
-printf 'Installed %s at %s\n' "$first_line" "$DESTINATION"
+ndt7_archive="$workdir/ndt7-client.tar.gz"
+ndt7_source="$workdir/ndt7-client"
+fetch "$NDT7_ARCHIVE_URL" "$ndt7_archive"
+verify_archive "$ndt7_archive" "$NDT7_ARCHIVE_SHA256"
+mkdir -p "$ndt7_source"
+tar -xzf "$ndt7_archive" --strip-components=1 -C "$ndt7_source"
+
+ndt7_binary="$workdir/ndt7-client-bin"
+ndt7_ldflags="-s -w -buildid= -X main.ClientName=njuprobe -X main.ClientVersion=0.10.1"
+(
+  cd "$ndt7_source"
+  GOTOOLCHAIN=auto go build -trimpath -ldflags "$ndt7_ldflags" -o "$ndt7_binary" ./cmd/ndt7-client
+)
+install -m 0755 "$ndt7_binary" "$TOOLS_DIR/.ndt7-client.$$"
+mv -f "$TOOLS_DIR/.ndt7-client.$$" "$TOOLS_DIR/ndt7-client"
+printf '%s\n' "$NDT7_VERSION" > "$TOOLS_DIR/.ndt7-client.version.$$"
+chmod 0600 "$TOOLS_DIR/.ndt7-client.version.$$"
+mv -f "$TOOLS_DIR/.ndt7-client.version.$$" "$TOOLS_DIR/ndt7-client.version"
+
+printf 'Installed %s at %s\n' "$first_line" "$TOOLS_DIR/librespeed-cli"
+printf 'Installed ndt7-client %s at %s\n' "$NDT7_VERSION" "$TOOLS_DIR/ndt7-client"

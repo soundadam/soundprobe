@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -23,7 +24,21 @@ type fakeRunner struct {
 	err          error
 }
 
-func (runner *fakeRunner) Preflight(request provider.Request) error {
+type fakeProgressRenderer struct {
+	events []provider.ProgressEvent
+	closed bool
+}
+
+func (renderer *fakeProgressRenderer) Update(event provider.ProgressEvent) {
+	renderer.events = append(renderer.events, event)
+}
+
+func (renderer *fakeProgressRenderer) Close() error {
+	renderer.closed = true
+	return nil
+}
+
+func (runner *fakeRunner) Preflight(_ context.Context, request provider.Request) error {
 	runner.request = request
 	return runner.preflightErr
 }
@@ -173,6 +188,69 @@ func TestPartialRunReturnsTwoAndJSONHasNoANSI(t *testing.T) {
 	}
 }
 
+func TestLastReturnsNewestSavedRun(t *testing.T) {
+	app, stdout, stderr := newTestApp(t, &fakeRunner{})
+	older := successfulSummary(model.CommandCampus)
+	older.RunID = "00000000-0000-4000-8000-000000000020"
+	newer := successfulSummary(model.CommandCampus)
+	newer.RunID = "00000000-0000-4000-8000-000000000021"
+	newer.StartedAt = newer.StartedAt.Add(time.Hour)
+	newer.EndedAt = newer.EndedAt.Add(time.Hour)
+	if err := app.History.Save(older); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.History.Save(newer); err != nil {
+		t.Fatal(err)
+	}
+	if exitCode := app.Execute(context.Background(), []string{"last", "--json"}); exitCode != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	var decoded model.RunSummary
+	if err := json.Unmarshal(stdout.Bytes(), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.RunID != newer.RunID {
+		t.Fatalf("run ID = %q, want %q", decoded.RunID, newer.RunID)
+	}
+}
+
+func TestDoctorReportsReadyProviders(t *testing.T) {
+	app, stdout, stderr := newTestApp(t, &fakeRunner{})
+	if exitCode := app.Execute(context.Background(), []string{"doctor", "--json"}); exitCode != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	var payload struct {
+		Ready     bool              `json:"ready"`
+		Providers map[string]string `json:"providers"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if !payload.Ready || payload.Providers["campus"] != "ready" || payload.Providers["mlab"] != "ready" {
+		t.Fatalf("payload = %#v", payload)
+	}
+}
+
+func TestInteractiveMeasurementUsesProgressRenderer(t *testing.T) {
+	runner := &fakeRunner{summary: successfulSummary(model.CommandCampus)}
+	app, _, stderr := newTestApp(t, runner)
+	app.StdoutTTY = true
+	progress := &fakeProgressRenderer{}
+	app.ProgressFactory = func(io.Writer, string, model.Command) (progressRenderer, error) {
+		return progress, nil
+	}
+	if exitCode := app.Execute(context.Background(), []string{"campus", "--no-save"}); exitCode != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	if runner.request.Progress == nil {
+		t.Fatal("progress sink was not passed to runner")
+	}
+	runner.request.Report(provider.ProgressEvent{Provider: model.ProviderCampus, Phase: provider.ProgressMeasuring})
+	if len(progress.events) != 1 || !progress.closed {
+		t.Fatalf("renderer = %#v", progress)
+	}
+}
+
 func TestInteractiveConsentAccept(t *testing.T) {
 	app, stdout, stderr := newTestApp(t, &fakeRunner{})
 	app.In = strings.NewReader("accept\n")
@@ -187,7 +265,7 @@ func TestInteractiveConsentAccept(t *testing.T) {
 	if !accepted {
 		t.Fatal("consent was not recorded")
 	}
-	if !strings.Contains(stdout.String(), consent.PolicyVersion) {
+	if !strings.Contains(stdout.String(), consent.PolicyVersion) || !strings.Contains(stdout.String(), consent.PolicyURL) {
 		t.Fatalf("stdout = %q", stdout.String())
 	}
 }
@@ -203,7 +281,7 @@ func newTestApp(t *testing.T, runner provider.Runner) (*App, *bytes.Buffer, *byt
 		Out:       stdout,
 		Err:       stderr,
 		StdinTTY:  true,
-		StdoutTTY: true,
+		StdoutTTY: false,
 		Version:   "test",
 		Runner:    runner,
 		History:   storage.New(filepath.Join(root, "history")),

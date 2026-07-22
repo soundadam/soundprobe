@@ -1,0 +1,8 @@
+{"Key":"starting","Value":{"Test":"download"}}
+{"Key":"connected","Value":{"Server":"ndt-mlab1.example.net","Test":"download"}}
+{"Key":"measurement","Value":{"AppInfo":{"ElapsedTime":10000000,"NumBytes":100000000},"Origin":"client","Test":"download"}}
+{"Key":"complete","Value":{"Test":"download"}}
+{"Key":"starting","Value":{"Test":"upload"}}
+{"Key":"error","Value":{"Failure":"dial tcp: network is unreachable","Test":"upload"}}
+{"Key":"complete","Value":{"Test":"upload"}}
+{"ServerFQDN":"ndt-mlab1.example.net","ServerIP":"192.0.2.10","ClientIP":"198.51.100.42","Download":{"UUID":"00000000-0000-4000-8000-000000000010","Throughput":{"Value":80,"Unit":"Mbit/s"},"Latency":{"Value":12.5,"Unit":"ms"},"Retransmission":{"Value":0.1,"Unit":"%"}},"Upload":null}

@@ -87,9 +87,11 @@ njuprobe run [--label TEXT] [--note TEXT] [--no-save]
 njuprobe campus [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
 njuprobe mlab [--label TEXT] [--note TEXT] [--no-save]
 njuprobe history [--limit N]
+njuprobe last [--json]
 njuprobe show RUN_ID [--json]
 njuprobe export --format jsonl|csv --output PATH
 njuprobe consent status|accept|revoke
+njuprobe doctor [--json]
 njuprobe version
 ```
 
@@ -194,11 +196,15 @@ Provide a reproducible development command that downloads/builds the pinned
 helper source into the ignored `.tools/bin` directory and verifies expected
 versions. Do not commit helper binaries or source copies.
 
-Because the GitHub repository is private, v0.1 does not publish a public
-Homebrew Formula. A local/private Formula may build NJUProbe plus the two pinned
-helper resources from authenticated or already checked-out sources. Any future
-public tap entry requires a separate source-availability and distribution
-decision.
+The owner has approved public distribution through Homebrew. Releases use an
+immutable, checksummed source asset and a Formula that builds NJUProbe plus the
+two pinned helper resources from source. Publication starts in the maintained
+`soundadam/homebrew-tap`; a later `homebrew/core` submission is conditional on a
+public stable release, supported-macOS acceptance, Formula audit results, and
+Homebrew review.
+
+Formula tests are offline and may invoke only version, diagnostics, and
+read-only history commands. They must not contact NJU or M-Lab.
 
 ## 7. Verification gates
 
@@ -221,9 +227,17 @@ only `njuprobe version` and other offline/read-only commands.
 
 ## 8. Release boundary
 
-The first implementation lands on `main` in the private `soundadam/njuprobe`
-repository. Do not tag or claim v0.1.0 readiness until tests, real operator
-acceptance, dependency notices, and a private/local installation test pass.
+Do not tag or claim v0.1.0 readiness until all automated gates, real operator
+acceptance, dependency notices, and local Homebrew installation tests pass on a
+supported macOS machine.
 
-Creating a public repository, public Release, or public tap Formula is outside
-this specification and requires an explicit later decision.
+A v0.1.0 release consists of:
+
+1. a public immutable source release asset;
+2. recorded SHA-256 checksums for NJUProbe and both helper sources;
+3. a rendered `njuprobe` Formula in `soundadam/homebrew-tap`;
+4. successful `brew audit`, source installation, `brew test`, and upgrade checks;
+5. documented install, privacy, and rollback instructions.
+
+Inclusion in `homebrew/core` is not part of the v0.1.0 acceptance claim and must
+not be implied before Homebrew review.
