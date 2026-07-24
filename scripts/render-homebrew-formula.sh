@@ -13,19 +13,30 @@ version=${1#v}
 source_sha256=$2
 output=${3:-"$ROOT/dist/Formula/njuprobe.rb"}
 
-case "$version" in
-  *[!0-9.]*|.*|*.)
-    echo "render-homebrew-formula: VERSION must be numeric semver" >&2
-    exit 1
-    ;;
-esac
-case "$version" in
-  *.*.*) ;;
-  *)
-    echo "render-homebrew-formula: VERSION must contain major.minor.patch" >&2
-    exit 1
-    ;;
-esac
+validate_version() {
+  candidate=$1
+  old_ifs=$IFS
+  IFS=.
+  set -- $candidate
+  IFS=$old_ifs
+
+  if [ "$#" -ne 3 ]; then
+    return 1
+  fi
+  for component in "$@"; do
+    case "$component" in
+      ""|*[!0-9]*) return 1 ;;
+      0) ;;
+      0*) return 1 ;;
+      *) ;;
+    esac
+  done
+}
+
+if ! validate_version "$version"; then
+  echo "render-homebrew-formula: VERSION must be numeric major.minor.patch without leading zeros" >&2
+  exit 1
+fi
 case "$source_sha256" in
   *[!0-9a-f]*|"")
     echo "render-homebrew-formula: SOURCE_SHA256 must be lowercase hexadecimal" >&2

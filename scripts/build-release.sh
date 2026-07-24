@@ -12,19 +12,30 @@ version=${1#v}
 ref=${2:-"v$version"}
 archive="$ROOT/dist/njuprobe-$version.tar.gz"
 
-case "$version" in
-  *[!0-9.]*|.*|*.)
-    echo "build-release: VERSION must be numeric semver" >&2
-    exit 1
-    ;;
-esac
-case "$version" in
-  *.*.*) ;;
-  *)
-    echo "build-release: VERSION must contain major.minor.patch" >&2
-    exit 1
-    ;;
-esac
+validate_version() {
+  candidate=$1
+  old_ifs=$IFS
+  IFS=.
+  set -- $candidate
+  IFS=$old_ifs
+
+  if [ "$#" -ne 3 ]; then
+    return 1
+  fi
+  for component in "$@"; do
+    case "$component" in
+      ""|*[!0-9]*) return 1 ;;
+      0) ;;
+      0*) return 1 ;;
+      *) ;;
+    esac
+  done
+}
+
+if ! validate_version "$version"; then
+  echo "build-release: VERSION must be numeric major.minor.patch without leading zeros" >&2
+  exit 1
+fi
 
 ensure_directory() {
   directory=$1
