@@ -51,8 +51,10 @@ make ci
 ```
 
 This target verifies the module cache, runs the complete offline gate and race
-suite, and builds the CLI. It may bootstrap a pinned Go toolchain and C compiler,
-but it never runs a real NJU or M-Lab bandwidth measurement.
+suite, and builds the CLI. On Linux amd64 it uses either an already installed
+exact Go version or the repository-pinned, checksummed Go archive; automatic Go
+toolchain downloads are disabled for the gate. It may install a C compiler when
+one is missing, but it never runs a real NJU or M-Lab bandwidth measurement.
 
 ## 2. Build and diagnose the pinned helpers
 

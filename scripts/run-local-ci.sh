@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 GO_VERSION="1.25.8"
 GO_ARCHIVE="go${GO_VERSION}.linux-amd64.tar.gz"
 GO_ARCHIVE_SHA256="ceb5e041bbc3893846bd1614d76cb4681c91dadee579426cf21a63f2d7e03be6"
@@ -71,7 +71,7 @@ install_exact_go_archive() {
 
 ensure_go() {
   if command -v go >/dev/null 2>&1; then
-    detected=$(GOTOOLCHAIN=auto go env GOVERSION 2>/dev/null || true)
+    detected=$(GOTOOLCHAIN=local go env GOVERSION 2>/dev/null || true)
     if [ "$detected" = "go${GO_VERSION}" ]; then
       command -v go
       return
@@ -85,31 +85,38 @@ ensure_go() {
     exit 1
   fi
 
-  if command -v sudo >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
-    sudo env DEBIAN_FRONTEND=noninteractive apt-get update >/dev/null
-    sudo env DEBIAN_FRONTEND=noninteractive \
-      apt-get install --yes --no-install-recommends build-essential golang-1.24-go >/dev/null
-    go_bin=/usr/lib/go-1.24/bin/go
-    if [ -x "$go_bin" ]; then
-      printf '%s\n' "$go_bin"
-      return
-    fi
-  fi
-
   install_exact_go_archive
 }
 
+ensure_c_compiler() {
+  if command -v cc >/dev/null 2>&1; then
+    return
+  fi
+  if command -v sudo >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
+    sudo env DEBIAN_FRONTEND=noninteractive apt-get update >/dev/null
+    sudo env DEBIAN_FRONTEND=noninteractive \
+      apt-get install --yes --no-install-recommends build-essential >/dev/null
+  fi
+  if ! command -v cc >/dev/null 2>&1; then
+    echo "run-local-ci: a C compiler is required for the Go race detector" >&2
+    exit 1
+  fi
+}
+
 GO_BIN=$(ensure_go)
-PATH=$(dirname "$GO_BIN"):$PATH
-if ! command -v cc >/dev/null 2>&1; then
-  echo "run-local-ci: a C compiler is required for the Go race detector" >&2
+SELECTED_GO_VERSION=$(GOTOOLCHAIN=local "$GO_BIN" env GOVERSION)
+if [ "$SELECTED_GO_VERSION" != "go${GO_VERSION}" ]; then
+  echo "run-local-ci: selected $SELECTED_GO_VERSION, expected go${GO_VERSION}" >&2
   exit 1
 fi
+printf 'run-local-ci: using %s\n' "$SELECTED_GO_VERSION"
+PATH=$(dirname "$GO_BIN"):$PATH
+ensure_c_compiler
 GOCACHE="$ROOT/.tools/go-build-cache"
 GOENV=off
-GOTOOLCHAIN=auto
+GOTOOLCHAIN=local
 CGO_ENABLED=1
 export PATH GOCACHE GOENV GOTOOLCHAIN CGO_ENABLED
 mkdir -p "$GOCACHE"
 
-exec make -C "$ROOT" GO=go GOTOOLCHAIN=auto verify-mod test-offline test-race build
+exec make -C "$ROOT" GO=go GOTOOLCHAIN=local verify-mod test-offline test-race build
