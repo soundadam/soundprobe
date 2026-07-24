@@ -17,6 +17,9 @@ archive="$repo/dist/njuprobe-0.1.0.tar.gz"
 formula="$repo/dist/Formula/njuprobe.rb"
 
 git -C "$ROOT" worktree add --detach --quiet "$repo" HEAD
+if ! git -C "$ROOT" diff --quiet HEAD -- .; then
+  git -C "$ROOT" diff --binary HEAD -- . | git -C "$repo" apply --whitespace=nowarn
+fi
 
 build_once() {
   output_archive=$1
@@ -38,6 +41,29 @@ build_once "$workdir/archive-second.tar.gz" "$workdir/formula-second.rb" 077
 
 cmp "$workdir/archive-first.tar.gz" "$workdir/archive-second.tar.gz"
 cmp "$workdir/formula-first.rb" "$workdir/formula-second.rb"
+
+cp "$archive" "$workdir/archive-before-failure.tar.gz"
+cp "$formula" "$workdir/formula-before-failure.rb"
+cp "$repo/packaging/homebrew/njuprobe.rb.tmpl" "$workdir/formula-template-original.rb"
+printf '\n# @UNRESOLVED_RELEASE_TOKEN@\n' >> "$repo/packaging/homebrew/njuprobe.rb.tmpl"
+invalid_template_succeeded=0
+if (
+  cd "$repo"
+  ./scripts/build-release.sh 0.1.0 HEAD >/dev/null 2>&1
+); then
+  invalid_template_succeeded=1
+fi
+cp "$workdir/formula-template-original.rb" "$repo/packaging/homebrew/njuprobe.rb.tmpl"
+if [ "$invalid_template_succeeded" -eq 1 ]; then
+  echo "release artifact test: invalid Formula template unexpectedly succeeded" >&2
+  exit 1
+fi
+cmp "$archive" "$workdir/archive-before-failure.tar.gz"
+cmp "$formula" "$workdir/formula-before-failure.rb"
+if find "$repo/dist" -type f \( -name '*.tmp.*' -o -name '*.backup.*' \) | grep -q .; then
+  echo "release artifact test: failed build left temporary publication files" >&2
+  exit 1
+fi
 
 python3 - "$workdir/archive-first.tar.gz" "$workdir/formula-first.rb" <<'PY'
 import hashlib

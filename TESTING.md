@@ -31,6 +31,8 @@ and verify:
 - `doctor`, saved history, `last`, and `history`;
 - JSON output without ANSI escape sequences;
 - Homebrew Formula template resources and unresolved placeholders.
+- deterministic release archives and Formula output, including preservation of
+  the previous valid artifacts when a staged release build fails.
 - deterministic source archives with safe paths, required files, and a matching
   Formula checksum.
 

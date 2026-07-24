@@ -61,14 +61,22 @@ if [ ! -d "$output_directory" ]; then
     exit 1
   fi
 fi
+temporary_output="$output.tmp.$$"
+cleanup() {
+  rm -f "$temporary_output"
+}
+trap cleanup EXIT HUP INT TERM
+
 sed \
   -e "s/@VERSION@/$version/g" \
   -e "s/@SOURCE_SHA256@/$source_sha256/g" \
-  "$TEMPLATE" > "$output"
+  "$TEMPLATE" > "$temporary_output"
 
-if grep -q '@[A-Z_][A-Z_]*@' "$output"; then
+if grep -q '@[A-Z_][A-Z_]*@' "$temporary_output"; then
   echo "render-homebrew-formula: unresolved template placeholder" >&2
   exit 1
 fi
+mv -f "$temporary_output" "$output"
+temporary_output=
 
 printf 'Rendered Homebrew Formula: %s\n' "$output"
