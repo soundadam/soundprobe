@@ -2,9 +2,9 @@
 set -eu
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-GO_VERSION="1.25.0"
+GO_VERSION="1.25.8"
 GO_ARCHIVE="go${GO_VERSION}.linux-amd64.tar.gz"
-GO_ARCHIVE_SHA256="2852af0cb20a13139b3448992e69b868e50ed0f8a1e5940ee1de9e19a123b613"
+GO_ARCHIVE_SHA256="ceb5e041bbc3893846bd1614d76cb4681c91dadee579426cf21a63f2d7e03be6"
 GO_ARCHIVE_URL="https://go.dev/dl/${GO_ARCHIVE}"
 
 checksum() {

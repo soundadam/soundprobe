@@ -1,6 +1,6 @@
 module github.com/soundadam/njuprobe
 
-go 1.25.0
+go 1.25.8
 
 require charm.land/bubbletea/v2 v2.0.6
 

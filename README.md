@@ -68,7 +68,7 @@ second. Redirected and JSON output never contains ANSI progress sequences.
 
 ## Development
 
-Building the pinned ndt7-client v0.10.1 helper requires Go 1.25.5 or newer. Go's automatic
+Building NJUProbe and the pinned ndt7-client v0.10.1 helper requires Go 1.25.8 or newer. Go's automatic
 toolchain selection is supported.
 
 ```sh
