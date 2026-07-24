@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 TOOLS_DIR="$ROOT/.tools/bin"
 
 LIBRESPEED_VERSION="v1.0.13"
@@ -77,7 +77,7 @@ librespeed_ldflags="-s -w -buildid= -X github.com/librespeed/speedtest-cli/defs.
 install -m 0755 "$librespeed_binary" "$TOOLS_DIR/.librespeed-cli.$$"
 mv -f "$TOOLS_DIR/.librespeed-cli.$$" "$TOOLS_DIR/librespeed-cli"
 
-first_line=$($TOOLS_DIR/librespeed-cli --version | sed -n '1p')
+first_line=$("$TOOLS_DIR/librespeed-cli" --version | sed -n '1p')
 case "$first_line" in
   "librespeed-cli $LIBRESPEED_VERSION "*) ;;
   *)

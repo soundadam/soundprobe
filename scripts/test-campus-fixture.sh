@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 BINARY="$ROOT/bin/njuprobe"
 IPV4_FIXTURE="$ROOT/internal/provider/campus/testdata/librespeed-success-ipv4.json"
 IPV6_FIXTURE="$ROOT/internal/provider/campus/testdata/librespeed-success-ipv6.json"

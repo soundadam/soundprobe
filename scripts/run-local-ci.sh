@@ -32,6 +32,8 @@ apt_get_with_lock_retry() {
 
   while :; do
     attempts=$((attempts + 1))
+    # The log is intentionally opened by the invoking user; mktemp created it in a user-writable directory.
+    # shellcheck disable=SC2024
     if sudo env DEBIAN_FRONTEND=noninteractive \
       apt-get -o DPkg::Lock::Timeout=120 "$@" >"$log_file" 2>&1; then
       rm -f "$log_file"
