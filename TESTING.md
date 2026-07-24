@@ -44,6 +44,16 @@ Race detector:
 GOTOOLCHAIN=auto go test -race ./...
 ```
 
+For the reproducible Linux amd64 KVM gate used by local development:
+
+```sh
+make ci
+```
+
+This target verifies the module cache, runs the complete offline gate and race
+suite, and builds the CLI. It may bootstrap a pinned Go toolchain and C compiler,
+but it never runs a real NJU or M-Lab bandwidth measurement.
+
 ## 2. Build and diagnose the pinned helpers
 
 NJUProbe uses separately installed helper executables:
