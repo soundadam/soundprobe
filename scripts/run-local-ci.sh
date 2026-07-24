@@ -26,6 +26,33 @@ fetch() {
   fi
 }
 
+apt_get_with_lock_retry() {
+  attempts=0
+  log_file=$(mktemp "${TMPDIR:-/tmp}/njuprobe-apt.XXXXXX")
+
+  while :; do
+    attempts=$((attempts + 1))
+    if sudo env DEBIAN_FRONTEND=noninteractive \
+      apt-get -o DPkg::Lock::Timeout=120 "$@" >"$log_file" 2>&1; then
+      rm -f "$log_file"
+      return 0
+    fi
+
+    if [ "$attempts" -ge 60 ] || ! grep -Eq \
+      'Could not get lock|Unable to acquire the dpkg frontend lock|Unable to lock directory' \
+      "$log_file"; then
+      cat "$log_file" >&2
+      rm -f "$log_file"
+      return 1
+    fi
+
+    if [ "$attempts" -eq 1 ]; then
+      echo "run-local-ci: waiting for the guest package manager lock" >&2
+    fi
+    sleep 2
+  done
+}
+
 install_exact_go_archive() {
   tools_root="$ROOT/.tools/go-${GO_VERSION}-linux-amd64"
   go_bin="$tools_root/go/bin/go"
@@ -93,9 +120,8 @@ ensure_c_compiler() {
     return
   fi
   if command -v sudo >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
-    sudo env DEBIAN_FRONTEND=noninteractive apt-get update >/dev/null
-    sudo env DEBIAN_FRONTEND=noninteractive \
-      apt-get install --yes --no-install-recommends build-essential >/dev/null
+    apt_get_with_lock_retry update
+    apt_get_with_lock_retry install --yes --no-install-recommends build-essential
   fi
   if ! command -v cc >/dev/null 2>&1; then
     echo "run-local-ci: a C compiler is required for the Go race detector" >&2
