@@ -17,6 +17,7 @@ go vet ./...
 scripts/test-campus-fixture.sh
 scripts/test-run-fixture.sh
 scripts/test-homebrew-template.sh
+scripts/test-release-artifact.sh
 ```
 
 The fixtures exercise the real `njuprobe` executable with mock helper processes
@@ -30,6 +31,8 @@ and verify:
 - `doctor`, saved history, `last`, and `history`;
 - JSON output without ANSI escape sequences;
 - Homebrew Formula template resources and unresolved placeholders.
+- deterministic source archives with safe paths, required files, and a matching
+  Formula checksum.
 
 Focused provider tests:
 

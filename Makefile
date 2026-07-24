@@ -1,4 +1,4 @@
-.PHONY: build tools verify-mod test test-race test-campus-provider test-mlab-provider test-campus-fixture test-run-fixture test-homebrew-template test-offline vet check ci release clean clean-tools
+.PHONY: build tools verify-mod test test-race test-campus-provider test-mlab-provider test-campus-fixture test-run-fixture test-homebrew-template test-release-artifact test-offline vet check ci release clean clean-tools
 
 BINARY := bin/njuprobe
 GO ?= go
@@ -34,7 +34,10 @@ test-run-fixture:
 test-homebrew-template:
 	./scripts/test-homebrew-template.sh
 
-test-offline: check test-campus-fixture test-run-fixture test-homebrew-template
+test-release-artifact:
+	./scripts/test-release-artifact.sh
+
+test-offline: check test-campus-fixture test-run-fixture test-homebrew-template test-release-artifact
 
 vet:
 	GOTOOLCHAIN=$(GOTOOLCHAIN) $(GO) vet ./...
