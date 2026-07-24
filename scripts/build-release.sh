@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
   echo "usage: $0 VERSION [GIT_REF]" >&2
@@ -14,15 +14,21 @@ archive="$ROOT/dist/njuprobe-$version.tar.gz"
 
 validate_version() {
   candidate=$1
-  old_ifs=$IFS
-  IFS=.
-  set -- $candidate
-  IFS=$old_ifs
-
-  if [ "$#" -ne 3 ]; then
+  major=${candidate%%.*}
+  remainder=${candidate#*.}
+  if [ "$remainder" = "$candidate" ]; then
     return 1
   fi
-  for component in "$@"; do
+  minor=${remainder%%.*}
+  patch=${remainder#*.}
+  if [ "$patch" = "$remainder" ]; then
+    return 1
+  fi
+  case "$patch" in
+    *.*) return 1 ;;
+  esac
+
+  for component in "$major" "$minor" "$patch"; do
     case "$component" in
       ""|*[!0-9]*) return 1 ;;
       0) ;;
