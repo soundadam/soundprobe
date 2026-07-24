@@ -1,3 +1,7 @@
+# typed: strict
+# frozen_string_literal: true
+
+# Formula for the NJUProbe network measurement CLI.
 class Njuprobe < Formula
   desc "Compare NJU campus and M-Lab network measurements"
   homepage "https://github.com/soundadam/njuprobe"
@@ -9,12 +13,12 @@ class Njuprobe < Formula
   depends_on "go" => :build
 
   resource "librespeed-cli" do
-    url "https://codeload.github.com/librespeed/speedtest-cli/tar.gz/refs/tags/v1.0.13"
+    url "https://github.com/librespeed/speedtest-cli/archive/refs/tags/v1.0.13.tar.gz"
     sha256 "5ad938b61e3edc0ca95e2ccff0c06e97a69383f3cbb0243bd47b21b9865f9f55"
   end
 
   resource "ndt7-client" do
-    url "https://codeload.github.com/m-lab/ndt7-client-go/tar.gz/refs/tags/v0.10.1"
+    url "https://github.com/m-lab/ndt7-client-go/archive/refs/tags/v0.10.1.tar.gz"
     sha256 "31b40268bd7a9d31bdb5507b7ade2fad2efb8abb9e7339d2f59e9cdee5340bef"
   end
 
@@ -31,7 +35,7 @@ class Njuprobe < Formula
     helper_dir.mkpath
 
     resource("librespeed-cli").stage do
-      ldflags = %W[
+      ldflags = %w[
         -s -w -buildid=
         -X github.com/librespeed/speedtest-cli/defs.ProgName=librespeed-cli
         -X github.com/librespeed/speedtest-cli/defs.ProgVersion=v1.0.13
@@ -43,7 +47,7 @@ class Njuprobe < Formula
     end
 
     resource("ndt7-client").stage do
-      ldflags = %W[
+      ldflags = %w[
         -s -w -buildid=
         -X main.ClientName=njuprobe
         -X main.ClientVersion=0.10.1
