@@ -1,62 +1,110 @@
 # NJUProbe
 
-NJUProbe is a private, terminal-first network measurement product for comparing
+NJUProbe is a macOS-first, terminal-first network measurement tool that compares
 two deliberately different paths:
 
-- the current connection to Nanjing University's campus speed-test service;
-- the current public Internet connection measured with M-Lab NDT7.
+- the current path to Nanjing University's LibreSpeed service;
+- the current public Internet path measured with M-Lab NDT7.
 
-It is independent of soundVPN, SFM, and NJUConnect. It observes the network path
-selected by the operating system but does not read, modify, or claim knowledge
-of those products' routing configuration.
+The providers run sequentially and remain visibly distinct: NJU uses a
+three-stream LibreSpeed measurement, while M-Lab NDT7 is a single-stream bulk
+transport measurement. NJUProbe does not combine them into a synthetic score.
 
-## Repository status
+## Current status
 
-This initial repository contains the decision-complete v0.1 specification only.
-No executable, helper binary, release artifact, or Homebrew Formula has been
-implemented or published yet. Implementation must follow [SPEC.md](SPEC.md) and
-[AGENTS.md](AGENTS.md).
+The v0.1 implementation includes:
 
-## Intended command surface
+- NJU IPv4 and explicit IPv6 measurements;
+- M-Lab NDT7 download and upload measurements;
+- fixed-block Bubble Tea progress for interactive terminals;
+- clean plain and JSON output when redirected;
+- atomic local history, `last`, `show`, and export commands;
+- explicit M-Lab privacy consent;
+- pinned, separately installed helper executables;
+- offline fixtures for all routine tests;
+- source-release and Homebrew Formula scaffolding.
 
-```text
-njuprobe
-njuprobe run [--label TEXT] [--note TEXT] [--no-save]
-njuprobe campus [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
-njuprobe mlab [--label TEXT] [--note TEXT] [--no-save]
+No public release or Homebrew tap has been published yet. See
+[RELEASE.md](RELEASE.md) for the release gates.
 
-njuprobe history [--limit N]
-njuprobe show RUN_ID [--json]
-njuprobe export --format jsonl|csv --output PATH
+## Daily use
 
-njuprobe consent status
-njuprobe consent accept
-njuprobe consent revoke
+Install the development helpers and build the CLI:
 
-njuprobe version
+```sh
+make tools
+make build
+./bin/njuprobe doctor
 ```
 
-Running `njuprobe` will eventually execute the campus and M-Lab measurements
-sequentially and leave one compact summary in the terminal. During a test, an
-inline terminal UI will redraw a fixed block instead of printing an expanding
-stream of status lines.
+Accept the M-Lab policy once before the first combined or M-Lab-only run:
 
-## Privacy
+```sh
+./bin/njuprobe consent accept
+```
 
-Local summaries are intentionally retained indefinitely and may contain the
-client's public IP address. M-Lab separately collects and publicly publishes
-the client's ISP-provided IP address and measurement results. The first M-Lab
-run must therefore require explicit consent and record the accepted policy
-version locally.
+Common commands:
 
-The source repository is private. A normal public Homebrew Formula cannot use
-this private repository as an anonymously downloadable source. Local/private
-installation remains allowed; any public distribution is a separate owner
-decision.
+```text
+njuprobe                         Run NJU, then M-Lab, and save the result
+njuprobe campus                  Run only NJU IPv4
+njuprobe campus --ipv6           Run only NJU IPv6, without IPv4 fallback
+njuprobe mlab                    Run only M-Lab NDT7
+njuprobe last                    Show the newest saved result
+njuprobe history --limit 10      List recent runs
+njuprobe show RUN_ID --json      Read one complete stored result
+njuprobe doctor --json           Check helpers, consent, and storage
+```
+
+Use `--no-save` for disposable checks and global `--json` for scripts:
+
+```sh
+njuprobe run --no-save --json
+njuprobe campus --json
+```
+
+Interactive output redraws one fixed block at no more than four frames per
+second. Redirected and JSON output never contains ANSI progress sequences.
+
+## Development
+
+Building NJUProbe and the pinned ndt7-client v0.10.1 helper requires Go 1.25.8 or newer. Go's automatic
+toolchain selection is supported.
+
+```sh
+make test-offline
+make tools
+make build
+./bin/njuprobe doctor --json
+```
+
+`make test-offline` uses mock helpers and sanitized fixtures. It never performs
+a real bandwidth test. Real operator acceptance is explicit and documented in
+[TESTING.md](TESTING.md).
+
+## Privacy and storage
+
+Local summaries are retained indefinitely and may contain the client's public
+IP address. Files are written atomically with directory mode `0700` and file
+mode `0600` under:
+
+```text
+~/Library/Application Support/njuprobe/history/v1/
+```
+
+M-Lab separately collects and publicly publishes measurement data, including
+the ISP-provided IP address, under its [current privacy policy](https://www.measurementlab.net/privacy/). NJUProbe therefore fails
+closed until the user explicitly accepts that policy. NJUProbe has no analytics,
+cloud synchronization, daemon, scheduler, ASN enrichment, or geolocation lookup.
+
+## Independence
+
+NJUProbe is independent of soundVPN, SFM, and NJUConnect. It observes the path
+selected by the operating system but does not inspect or modify those products'
+private configuration.
 
 ## License
 
-NJUProbe's own source is licensed under the MIT License. Planned helper programs
-retain their upstream licenses and remain separate executables; see
+NJUProbe's source is MIT licensed. LibreSpeed CLI and ndt7-client remain
+separate helper executables under their upstream licenses. See
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
