@@ -46,10 +46,14 @@ fi
 
 ensure_directory() {
   directory=$1
+  if [ -L "$directory" ]; then
+    echo "build-release: output directory must not be a symbolic link: $directory" >&2
+    exit 1
+  fi
   if [ -d "$directory" ]; then
     return
   fi
-  if ! mkdir -p "$directory" 2>/dev/null && [ ! -d "$directory" ]; then
+  if ! mkdir -p "$directory" 2>/dev/null || [ -L "$directory" ] || [ ! -d "$directory" ]; then
     echo "build-release: cannot create directory $directory" >&2
     exit 1
   fi

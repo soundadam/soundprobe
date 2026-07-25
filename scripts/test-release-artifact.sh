@@ -91,6 +91,44 @@ assert_publication_modes
 cmp "$workdir/archive-first.tar.gz" "$workdir/archive-second.tar.gz"
 cmp "$workdir/formula-first.rb" "$workdir/formula-second.rb"
 
+saved_dist="$workdir/saved-dist"
+outside_dist="$workdir/outside-dist"
+mv "$repo/dist" "$saved_dist"
+mkdir "$outside_dist"
+ln -s "$outside_dist" "$repo/dist"
+if (
+  cd "$repo"
+  ./scripts/build-release.sh 0.1.0 HEAD >/dev/null 2>&1
+); then
+  echo "release artifact test: builder accepted a symlinked dist directory" >&2
+  exit 1
+fi
+if find "$outside_dist" -mindepth 1 -print | grep -q .; then
+  echo "release artifact test: builder wrote through a symlinked dist directory" >&2
+  exit 1
+fi
+rm "$repo/dist"
+mv "$saved_dist" "$repo/dist"
+
+saved_formula_directory="$workdir/saved-formula-directory"
+outside_formula_directory="$workdir/outside-formula-directory"
+mv "$repo/dist/Formula" "$saved_formula_directory"
+mkdir "$outside_formula_directory"
+ln -s "$outside_formula_directory" "$repo/dist/Formula"
+if (
+  cd "$repo"
+  ./scripts/build-release.sh 0.1.0 HEAD >/dev/null 2>&1
+); then
+  echo "release artifact test: builder accepted a symlinked Formula directory" >&2
+  exit 1
+fi
+if find "$outside_formula_directory" -mindepth 1 -print | grep -q .; then
+  echo "release artifact test: builder wrote through a symlinked Formula directory" >&2
+  exit 1
+fi
+rm "$repo/dist/Formula"
+mv "$saved_formula_directory" "$repo/dist/Formula"
+
 cp "$archive" "$workdir/archive-before-failure.tar.gz"
 cp "$formula" "$workdir/formula-before-failure.rb"
 cp "$repo/packaging/homebrew/njuprobe.rb.tmpl" "$workdir/formula-template-original.rb"

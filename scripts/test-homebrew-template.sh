@@ -23,6 +23,32 @@ if mode != 0o644:
     raise SystemExit(f"test-homebrew-template: output mode is {mode:o}, expected 644")
 PY
 
+outside_directory="$workdir/outside-formula-output"
+linked_directory="$workdir/linked-formula-output"
+mkdir "$outside_directory"
+ln -s "$outside_directory" "$linked_directory"
+if "$ROOT/scripts/render-homebrew-formula.sh" \
+  0.1.0 "$dummy_sha" "$linked_directory/njuprobe.rb" >/dev/null 2>&1; then
+  echo "test-homebrew-template: renderer accepted a symlinked output directory" >&2
+  exit 1
+fi
+if find "$outside_directory" -mindepth 1 -print | grep -q .; then
+  echo "test-homebrew-template: renderer wrote through a symlinked output directory" >&2
+  exit 1
+fi
+
+linked_output="$workdir/linked-output"
+ln -s "$outside_directory" "$linked_output"
+if "$ROOT/scripts/render-homebrew-formula.sh" \
+  0.1.0 "$dummy_sha" "$linked_output" >/dev/null 2>&1; then
+  echo "test-homebrew-template: renderer accepted a symlinked output path" >&2
+  exit 1
+fi
+if find "$outside_directory" -mindepth 1 -print | grep -q .; then
+  echo "test-homebrew-template: renderer wrote through a symlinked output path" >&2
+  exit 1
+fi
+
 expect_invalid_version() {
   command=$1
   version=$2

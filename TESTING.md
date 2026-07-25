@@ -44,7 +44,9 @@ and verify:
   `HEAD` content.
 - deterministic source archives with safe paths, required files, and a matching
   Formula checksum; published archives and Formula files are normalized to
-  mode `0644` independently of the invoking user's umask.
+  mode `0644` independently of the invoking user's umask, and release/render
+  commands reject symlinked output directories rather than writing outside the
+  repository through an accidental or hostile `dist` path.
 
 Focused provider tests:
 

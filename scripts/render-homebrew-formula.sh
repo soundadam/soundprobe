@@ -55,11 +55,20 @@ if [ "${#source_sha256}" -ne 64 ]; then
 fi
 
 output_directory=$(dirname -- "$output")
+if [ -L "$output_directory" ]; then
+  echo "render-homebrew-formula: output directory must not be a symbolic link: $output_directory" >&2
+  exit 1
+fi
 if [ ! -d "$output_directory" ]; then
-  if ! mkdir -p "$output_directory" 2>/dev/null && [ ! -d "$output_directory" ]; then
+  if ! mkdir -p "$output_directory" 2>/dev/null || \
+    [ -L "$output_directory" ] || [ ! -d "$output_directory" ]; then
     echo "render-homebrew-formula: cannot create directory $output_directory" >&2
     exit 1
   fi
+fi
+if [ -L "$output" ] || [ -d "$output" ]; then
+  echo "render-homebrew-formula: output path must be a regular file path: $output" >&2
+  exit 1
 fi
 temporary_output="$output.tmp.$$"
 cleanup() {
