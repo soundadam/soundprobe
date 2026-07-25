@@ -62,6 +62,36 @@ func TestResolverPrecedence(t *testing.T) {
 	}
 }
 
+func TestResolverFollowsExecutableSymlinkToLibexec(t *testing.T) {
+	root := t.TempDir()
+	cellarExecutable := filepath.Join(root, "Cellar", "njuprobe", "0.1.0", "bin", "njuprobe")
+	linkedExecutable := filepath.Join(root, "bin", "njuprobe")
+	libexec := filepath.Join(root, "Cellar", "njuprobe", "0.1.0", "libexec", "njuprobe", "librespeed-cli")
+	writeExecutable(t, cellarExecutable)
+	writeExecutable(t, libexec)
+	if err := os.MkdirAll(filepath.Dir(linkedExecutable), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(cellarExecutable, linkedExecutable); err != nil {
+		t.Fatal(err)
+	}
+
+	resolver := Resolver{
+		ExecutablePath:   linkedExecutable,
+		WorkingDirectory: root,
+		LookupPath: func(string) (string, error) {
+			return "", errors.New("not found")
+		},
+	}
+	resolved, err := resolver.Resolve("librespeed-cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Path != libexec || resolved.Source != SourceLibexec {
+		t.Fatalf("resolved = %#v, want libexec %q", resolved, libexec)
+	}
+}
+
 func TestResolverRejectsBrokenHigherPrecedenceHelper(t *testing.T) {
 	root := t.TempDir()
 	executable := filepath.Join(root, "prefix", "bin", "njuprobe")

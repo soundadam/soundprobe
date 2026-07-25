@@ -95,7 +95,11 @@ func (resolver Resolver) executablePath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve njuprobe executable path: %w", err)
 	}
-	return absolute, nil
+	resolved, err := filepath.EvalSymlinks(absolute)
+	if err != nil {
+		return "", fmt.Errorf("resolve njuprobe executable symlinks: %w", err)
+	}
+	return resolved, nil
 }
 
 func (resolver Resolver) workingDirectory() (string, error) {
