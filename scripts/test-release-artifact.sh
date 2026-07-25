@@ -69,8 +69,24 @@ build_once() {
   cp "$formula" "$output_formula"
 }
 
+assert_publication_modes() {
+  python3 - "$archive" "$formula" <<'PY'
+import pathlib
+import stat
+import sys
+
+for raw_path in sys.argv[1:]:
+    path = pathlib.Path(raw_path)
+    mode = stat.S_IMODE(path.stat().st_mode)
+    if mode != 0o644:
+        raise SystemExit(f"release artifact test: {path} mode is {mode:o}, expected 644")
+PY
+}
+
 build_once "$workdir/archive-first.tar.gz" "$workdir/formula-first.rb" 022
+assert_publication_modes
 build_once "$workdir/archive-second.tar.gz" "$workdir/formula-second.rb" 077
+assert_publication_modes
 
 cmp "$workdir/archive-first.tar.gz" "$workdir/archive-second.tar.gz"
 cmp "$workdir/formula-first.rb" "$workdir/formula-second.rb"

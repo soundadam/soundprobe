@@ -43,7 +43,8 @@ and verify:
   exercise the candidate source tree rather than silently archiving prior
   `HEAD` content.
 - deterministic source archives with safe paths, required files, and a matching
-  Formula checksum.
+  Formula checksum; published archives and Formula files are normalized to
+  mode `0644` independently of the invoking user's umask.
 
 Focused provider tests:
 

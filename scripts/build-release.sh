@@ -315,6 +315,7 @@ git -C "$ROOT" archive \
   "$commit"
 gzip -n -c "$temporary_tar" > "$temporary_archive"
 rm -f "$temporary_tar"
+chmod 0644 "$temporary_archive"
 
 if command -v sha256sum >/dev/null 2>&1; then
   source_sha256=$(sha256sum "$temporary_archive" | awk '{print $1}')

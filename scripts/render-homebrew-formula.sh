@@ -79,6 +79,7 @@ if grep -q '@[A-Z_][A-Z_]*@' "$temporary_output"; then
   echo "render-homebrew-formula: unresolved template placeholder" >&2
   exit 1
 fi
+chmod 0644 "$temporary_output"
 mv -f "$temporary_output" "$output"
 
 printf 'Rendered Homebrew Formula: %s\n' "$output"

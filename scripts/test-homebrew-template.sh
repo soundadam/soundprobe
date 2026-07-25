@@ -10,7 +10,18 @@ trap cleanup EXIT HUP INT TERM
 
 output="$workdir/njuprobe.rb"
 dummy_sha="0000000000000000000000000000000000000000000000000000000000000000"
+umask 077
 "$ROOT/scripts/render-homebrew-formula.sh" 0.1.0 "$dummy_sha" "$output" >/dev/null
+python3 - "$output" <<'PY'
+import pathlib
+import stat
+import sys
+
+path = pathlib.Path(sys.argv[1])
+mode = stat.S_IMODE(path.stat().st_mode)
+if mode != 0o644:
+    raise SystemExit(f"test-homebrew-template: output mode is {mode:o}, expected 644")
+PY
 
 expect_invalid_version() {
   command=$1
