@@ -42,7 +42,9 @@ formula="$repo/dist/Formula/njuprobe.rb"
 
 assert_no_publication_residue() {
   if find "$repo/dist" \
-    \( -name '*.tmp.*' -o -name '*.backup.*' -o -name '.njuprobe-release.lock' -o -name '.njuprobe-release.lock.stale.*' \) \
+    \( -name '*.tmp.*' -o -name '*.backup.*' -o -name '.njuprobe-release.lock' \
+      -o -name '.njuprobe-release.lock.stale.*' \
+      -o -name '.njuprobe-release.lock.owner.*' \) \
     -print | grep -q .; then
     echo "release artifact test: build left publication staging files" >&2
     exit 1
@@ -128,6 +130,65 @@ if (
 fi
 if [ "$interrupted_build_succeeded" -eq 1 ]; then
   echo "release artifact test: interrupted publication unexpectedly succeeded" >&2
+  exit 1
+fi
+cmp "$archive" "$workdir/archive-before-failure.tar.gz"
+cmp "$formula" "$workdir/formula-before-failure.rb"
+assert_no_publication_residue
+
+kill_fake_bin="$workdir/kill-fake-bin"
+kill_marker="$workdir/lock-link-kill-injected"
+mkdir "$kill_fake_bin"
+cat > "$kill_fake_bin/ln" <<'SH'
+#!/bin/sh
+set -eu
+
+"${NJU_REAL_LN:?}" "$@"
+destination=
+for argument in "$@"; do
+  destination=$argument
+done
+case "$destination" in
+  */dist/.njuprobe-release.lock)
+    if [ ! -e "${NJU_KILL_MARKER:?}" ]; then
+      : > "$NJU_KILL_MARKER"
+      kill -KILL "$PPID"
+    fi
+    ;;
+esac
+SH
+chmod +x "$kill_fake_bin/ln"
+
+atomic_lock_build_succeeded=0
+if (
+  cd "$repo"
+  NJU_REAL_LN=$(command -v ln) \
+    NJU_KILL_MARKER="$kill_marker" \
+    PATH="$kill_fake_bin:$PATH" \
+    ./scripts/build-release.sh 0.1.0 HEAD >/dev/null 2>&1
+); then
+  atomic_lock_build_succeeded=1
+fi
+if [ "$atomic_lock_build_succeeded" -eq 1 ] || [ ! -e "$kill_marker" ]; then
+  echo "release artifact test: lock-link SIGKILL fixture did not interrupt publication" >&2
+  exit 1
+fi
+if [ ! -f "$repo/dist/.njuprobe-release.lock" ] || \
+  [ -L "$repo/dist/.njuprobe-release.lock" ]; then
+  echo "release artifact test: interrupted atomic lock was not a regular file" >&2
+  exit 1
+fi
+if ! (
+  cd "$repo"
+  ./scripts/build-release.sh 0.1.0 HEAD >"$workdir/atomic-lock-recovery.log" 2>&1
+); then
+  echo "release artifact test: complete atomic lock was not recovered after SIGKILL" >&2
+  cat "$workdir/atomic-lock-recovery.log" >&2
+  exit 1
+fi
+if ! grep -q 'recovered stale release publication lock from PID' "$workdir/atomic-lock-recovery.log"; then
+  echo "release artifact test: atomic lock recovery was not reported" >&2
+  cat "$workdir/atomic-lock-recovery.log" >&2
   exit 1
 fi
 cmp "$archive" "$workdir/archive-before-failure.tar.gz"

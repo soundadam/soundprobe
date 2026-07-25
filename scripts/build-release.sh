@@ -66,6 +66,7 @@ backup_archive="$archive.backup.$$"
 backup_formula="$formula.backup.$$"
 release_lock="$ROOT/dist/.njuprobe-release.lock"
 stale_release_lock="$release_lock.stale.$$"
+release_lock_candidate=
 archive_backup_expected=0
 formula_backup_expected=0
 publishing=0
@@ -102,12 +103,21 @@ cleanup() {
     "$temporary_formula" || cleanup_failed=1
 
   if [ "$release_lock_acquired" -eq 1 ]; then
-    rm -f "$release_lock/pid" "$release_lock/start" || cleanup_failed=1
-    rmdir "$release_lock" || cleanup_failed=1
+    if [ -n "$release_lock_candidate" ] && \
+      [ -f "$release_lock" ] && [ ! -L "$release_lock" ] && \
+      [ -f "$release_lock_candidate" ] && [ ! -L "$release_lock_candidate" ] && \
+      [ "$release_lock" -ef "$release_lock_candidate" ]; then
+      rm -f "$release_lock" "$release_lock_candidate" || cleanup_failed=1
+      release_lock_candidate=
+    else
+      cleanup_failed=1
+    fi
+  elif [ -n "$release_lock_candidate" ]; then
+    rm -f "$release_lock_candidate" || cleanup_failed=1
+    release_lock_candidate=
   fi
   if [ "$stale_release_lock_owned" -eq 1 ]; then
-    rm -f "$stale_release_lock/pid" "$stale_release_lock/start" || cleanup_failed=1
-    rmdir "$stale_release_lock" || cleanup_failed=1
+    remove_release_lock_path "$stale_release_lock" || cleanup_failed=1
   fi
 
   if [ "$cleanup_failed" -ne 0 ] && [ "$status" -eq 0 ]; then
@@ -120,16 +130,39 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-read_release_lock_owner() {
-  lock_directory=$1
+read_release_lock_identity() {
+  lock_path=$1
   lock_owner=
-  if [ ! -r "$lock_directory/pid" ]; then
+  lock_owner_start=
+
+  if [ -L "$lock_path" ]; then
     return 1
   fi
-  IFS= read -r lock_owner < "$lock_directory/pid" || return 1
+  if [ -f "$lock_path" ]; then
+    {
+      IFS= read -r lock_owner || return 1
+      IFS= read -r lock_owner_start || return 1
+      if IFS= read -r _extra_line; then
+        return 1
+      fi
+    } < "$lock_path"
+  elif [ -d "$lock_path" ]; then
+    if [ ! -r "$lock_path/pid" ] || [ ! -r "$lock_path/start" ]; then
+      return 1
+    fi
+    IFS= read -r lock_owner < "$lock_path/pid" || return 1
+    IFS= read -r lock_owner_start < "$lock_path/start" || return 1
+  else
+    return 1
+  fi
+
   case "$lock_owner" in
     ""|*[!0-9]*) return 1 ;;
-    *) printf '%s\n' "$lock_owner" ;;
+    *) ;;
+  esac
+  case "$lock_owner_start" in
+    "") return 1 ;;
+    *) ;;
   esac
 }
 
@@ -144,31 +177,61 @@ get_process_start_identity() {
   esac
 }
 
-read_release_lock_start() {
-  lock_directory=$1
-  lock_start=
-  if [ ! -r "$lock_directory/start" ]; then
+remove_release_lock_path() {
+  lock_path=$1
+  if [ -L "$lock_path" ]; then
     return 1
   fi
-  IFS= read -r lock_start < "$lock_directory/start" || return 1
-  case "$lock_start" in
-    "") return 1 ;;
-    *) printf '%s\n' "$lock_start" ;;
-  esac
+  if [ -f "$lock_path" ]; then
+    rm -f "$lock_path"
+    return
+  fi
+  if [ -d "$lock_path" ]; then
+    rm -f "$lock_path/pid" "$lock_path/start" || return 1
+    rmdir "$lock_path"
+    return
+  fi
+  return 1
+}
+
+remove_orphan_lock_candidates() {
+  recovered_lock=$1
+  for candidate in "$ROOT/dist"/.njuprobe-release.lock.owner.*; do
+    if [ -f "$candidate" ] && [ ! -L "$candidate" ] && [ "$candidate" -ef "$recovered_lock" ]; then
+      rm -f "$candidate" || return 1
+    fi
+  done
+}
+
+publish_release_lock_candidate() {
+  if [ -e "$release_lock" ] || [ -L "$release_lock" ]; then
+    return 1
+  fi
+  if ! ln "$release_lock_candidate" "$release_lock" 2>/dev/null; then
+    return 1
+  fi
+  if [ ! -f "$release_lock" ] || [ -L "$release_lock" ] || \
+    [ ! "$release_lock" -ef "$release_lock_candidate" ]; then
+    misplaced_lock="$release_lock/$(basename -- "$release_lock_candidate")"
+    if [ -f "$misplaced_lock" ] && [ ! -L "$misplaced_lock" ] && \
+      [ "$misplaced_lock" -ef "$release_lock_candidate" ]; then
+      rm -f "$misplaced_lock" || return 1
+    fi
+    return 1
+  fi
+  release_lock_acquired=1
 }
 
 acquire_release_lock() {
-  if mkdir "$release_lock" 2>/dev/null; then
+  if publish_release_lock_candidate; then
     return 0
   fi
 
-  if [ -L "$release_lock" ] || [ ! -d "$release_lock" ]; then
-    echo "build-release: release publication lock is not a regular directory; inspect $release_lock" >&2
+  if [ -L "$release_lock" ] || { [ ! -f "$release_lock" ] && [ ! -d "$release_lock" ]; }; then
+    echo "build-release: release publication lock is not a regular file or legacy directory; inspect $release_lock" >&2
     return 1
   fi
-  lock_owner=$(read_release_lock_owner "$release_lock" || true)
-  lock_owner_start=$(read_release_lock_start "$release_lock" || true)
-  if [ -z "$lock_owner" ] || [ -z "$lock_owner_start" ]; then
+  if ! read_release_lock_identity "$release_lock"; then
     echo "build-release: release publication lock has no valid owner process identity; inspect $release_lock" >&2
     return 1
   fi
@@ -178,9 +241,15 @@ acquire_release_lock() {
     return 1
   fi
 
-  current_lock_owner=$(read_release_lock_owner "$release_lock" || true)
-  current_lock_start=$(read_release_lock_start "$release_lock" || true)
-  if [ "$current_lock_owner" != "$lock_owner" ] || [ "$current_lock_start" != "$lock_owner_start" ]; then
+  expected_lock_owner=$lock_owner
+  expected_lock_start=$lock_owner_start
+  if ! read_release_lock_identity "$release_lock"; then
+    echo "build-release: release publication lock changed while checking its owner identity" >&2
+    return 1
+  fi
+  current_lock_owner=$lock_owner
+  current_lock_start=$lock_owner_start
+  if [ "$current_lock_owner" != "$expected_lock_owner" ] || [ "$current_lock_start" != "$expected_lock_start" ]; then
     echo "build-release: release publication lock changed while checking its owner identity" >&2
     return 1
   fi
@@ -189,46 +258,53 @@ acquire_release_lock() {
     return 1
   fi
   if ! mv "$release_lock" "$stale_release_lock" 2>/dev/null; then
-    echo "build-release: release publication lock changed while recovering stale owner PID $lock_owner" >&2
+    echo "build-release: release publication lock changed while recovering stale owner PID $expected_lock_owner" >&2
     return 1
   fi
-  moved_lock_owner=$(read_release_lock_owner "$stale_release_lock" || true)
-  moved_lock_start=$(read_release_lock_start "$stale_release_lock" || true)
-  if [ "$moved_lock_owner" != "$lock_owner" ] || [ "$moved_lock_start" != "$lock_owner_start" ]; then
+  stale_release_lock_owned=1
+  if ! read_release_lock_identity "$stale_release_lock"; then
+    moved_lock_owner=
+    moved_lock_start=
+  else
+    moved_lock_owner=$lock_owner
+    moved_lock_start=$lock_owner_start
+  fi
+  if [ "$moved_lock_owner" != "$expected_lock_owner" ] || [ "$moved_lock_start" != "$expected_lock_start" ]; then
     if [ ! -e "$release_lock" ] && [ ! -L "$release_lock" ]; then
-      mv "$stale_release_lock" "$release_lock" 2>/dev/null || true
+      if mv "$stale_release_lock" "$release_lock" 2>/dev/null; then
+        stale_release_lock_owned=0
+      fi
     fi
     echo "build-release: recovered lock owner identity changed unexpectedly; inspect $stale_release_lock" >&2
     return 1
   fi
-  stale_release_lock_owned=1
-  rm -f "$stale_release_lock/pid" "$stale_release_lock/start"
-  rmdir "$stale_release_lock"
+  remove_orphan_lock_candidates "$stale_release_lock"
+  remove_release_lock_path "$stale_release_lock"
   stale_release_lock_owned=0
   if [ -n "$live_owner_start" ]; then
-    echo "build-release: recovered stale release publication lock from PID $lock_owner (process identity changed)" >&2
+    echo "build-release: recovered stale release publication lock from PID $expected_lock_owner (process identity changed)" >&2
   else
-    echo "build-release: recovered stale release publication lock from PID $lock_owner (owner process exited)" >&2
+    echo "build-release: recovered stale release publication lock from PID $expected_lock_owner (owner process exited)" >&2
   fi
 
-  if ! mkdir "$release_lock" 2>/dev/null; then
+  if ! publish_release_lock_candidate; then
     echo "build-release: another release publication acquired the lock during stale-lock recovery" >&2
     return 1
   fi
 }
 
-if ! acquire_release_lock; then
-  exit 1
-fi
-release_lock_acquired=1
 release_process_start=$(get_process_start_identity "$$" || true)
 if [ -z "$release_process_start" ]; then
   echo "build-release: cannot determine the release publication process identity" >&2
   exit 1
 fi
-if ! printf '%s\n' "$$" > "$release_lock/pid" || \
-  ! printf '%s\n' "$release_process_start" > "$release_lock/start"; then
-  echo "build-release: cannot record the release publication lock owner" >&2
+release_lock_candidate=$(mktemp "$ROOT/dist/.njuprobe-release.lock.owner.XXXXXX")
+if ! printf '%s\n%s\n' "$$" "$release_process_start" > "$release_lock_candidate"; then
+  echo "build-release: cannot prepare the release publication lock owner" >&2
+  exit 1
+fi
+
+if ! acquire_release_lock; then
   exit 1
 fi
 

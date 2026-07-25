@@ -34,8 +34,10 @@ and verify:
 - deterministic release archives and Formula output, including preservation of
   the previous valid artifacts when a staged release build fails or is
   interrupted during publication, rejection of concurrent publication,
-  recovery of locks owned by exited publishers or a reused PID, and fail-closed
-  handling of locks without a valid owner process identity.
+  atomic publication of complete lock-owner metadata before the lock becomes
+  visible, recovery after `SIGKILL` immediately following lock acquisition,
+  compatibility with legacy directory locks, recovery of locks owned by exited
+  publishers or a reused PID, and fail-closed handling of malformed identities.
 - release validation snapshots staged and unstaged tracked candidate changes
   into a temporary commit before invoking `git archive`, so pre-commit checks
   exercise the candidate source tree rather than silently archiving prior
