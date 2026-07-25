@@ -102,11 +102,11 @@ cleanup() {
     "$temporary_formula" || cleanup_failed=1
 
   if [ "$release_lock_acquired" -eq 1 ]; then
-    rm -f "$release_lock/pid" || cleanup_failed=1
+    rm -f "$release_lock/pid" "$release_lock/start" || cleanup_failed=1
     rmdir "$release_lock" || cleanup_failed=1
   fi
   if [ "$stale_release_lock_owned" -eq 1 ]; then
-    rm -f "$stale_release_lock/pid" || cleanup_failed=1
+    rm -f "$stale_release_lock/pid" "$stale_release_lock/start" || cleanup_failed=1
     rmdir "$stale_release_lock" || cleanup_failed=1
   fi
 
@@ -133,6 +133,30 @@ read_release_lock_owner() {
   esac
 }
 
+get_process_start_identity() {
+  process_id=$1
+  process_start=$(LC_ALL=C ps -p "$process_id" -o lstart= 2>/dev/null) || return 1
+  process_start=$(printf '%s\n' "$process_start" | awk '{$1=$1; print}')
+  case "$process_start" in
+    ""|*'
+'*) return 1 ;;
+    *) printf '%s\n' "$process_start" ;;
+  esac
+}
+
+read_release_lock_start() {
+  lock_directory=$1
+  lock_start=
+  if [ ! -r "$lock_directory/start" ]; then
+    return 1
+  fi
+  IFS= read -r lock_start < "$lock_directory/start" || return 1
+  case "$lock_start" in
+    "") return 1 ;;
+    *) printf '%s\n' "$lock_start" ;;
+  esac
+}
+
 acquire_release_lock() {
   if mkdir "$release_lock" 2>/dev/null; then
     return 0
@@ -143,18 +167,21 @@ acquire_release_lock() {
     return 1
   fi
   lock_owner=$(read_release_lock_owner "$release_lock" || true)
-  if [ -z "$lock_owner" ]; then
-    echo "build-release: release publication lock has no valid owner PID; inspect $release_lock" >&2
+  lock_owner_start=$(read_release_lock_start "$release_lock" || true)
+  if [ -z "$lock_owner" ] || [ -z "$lock_owner_start" ]; then
+    echo "build-release: release publication lock has no valid owner process identity; inspect $release_lock" >&2
     return 1
   fi
-  if kill -0 "$lock_owner" 2>/dev/null; then
+  live_owner_start=$(get_process_start_identity "$lock_owner" || true)
+  if [ -n "$live_owner_start" ] && [ "$live_owner_start" = "$lock_owner_start" ]; then
     echo "build-release: another release publication is already in progress (PID $lock_owner)" >&2
     return 1
   fi
 
   current_lock_owner=$(read_release_lock_owner "$release_lock" || true)
-  if [ "$current_lock_owner" != "$lock_owner" ]; then
-    echo "build-release: release publication lock changed while checking its owner" >&2
+  current_lock_start=$(read_release_lock_start "$release_lock" || true)
+  if [ "$current_lock_owner" != "$lock_owner" ] || [ "$current_lock_start" != "$lock_owner_start" ]; then
+    echo "build-release: release publication lock changed while checking its owner identity" >&2
     return 1
   fi
   if [ -e "$stale_release_lock" ] || [ -L "$stale_release_lock" ]; then
@@ -166,18 +193,23 @@ acquire_release_lock() {
     return 1
   fi
   moved_lock_owner=$(read_release_lock_owner "$stale_release_lock" || true)
-  if [ "$moved_lock_owner" != "$lock_owner" ]; then
+  moved_lock_start=$(read_release_lock_start "$stale_release_lock" || true)
+  if [ "$moved_lock_owner" != "$lock_owner" ] || [ "$moved_lock_start" != "$lock_owner_start" ]; then
     if [ ! -e "$release_lock" ] && [ ! -L "$release_lock" ]; then
       mv "$stale_release_lock" "$release_lock" 2>/dev/null || true
     fi
-    echo "build-release: recovered lock owner changed unexpectedly; inspect $stale_release_lock" >&2
+    echo "build-release: recovered lock owner identity changed unexpectedly; inspect $stale_release_lock" >&2
     return 1
   fi
   stale_release_lock_owned=1
-  rm -f "$stale_release_lock/pid"
+  rm -f "$stale_release_lock/pid" "$stale_release_lock/start"
   rmdir "$stale_release_lock"
   stale_release_lock_owned=0
-  echo "build-release: recovered stale release publication lock from PID $lock_owner" >&2
+  if [ -n "$live_owner_start" ]; then
+    echo "build-release: recovered stale release publication lock from PID $lock_owner (process identity changed)" >&2
+  else
+    echo "build-release: recovered stale release publication lock from PID $lock_owner (owner process exited)" >&2
+  fi
 
   if ! mkdir "$release_lock" 2>/dev/null; then
     echo "build-release: another release publication acquired the lock during stale-lock recovery" >&2
@@ -189,7 +221,13 @@ if ! acquire_release_lock; then
   exit 1
 fi
 release_lock_acquired=1
-if ! printf '%s\n' "$$" > "$release_lock/pid"; then
+release_process_start=$(get_process_start_identity "$$" || true)
+if [ -z "$release_process_start" ]; then
+  echo "build-release: cannot determine the release publication process identity" >&2
+  exit 1
+fi
+if ! printf '%s\n' "$$" > "$release_lock/pid" || \
+  ! printf '%s\n' "$release_process_start" > "$release_lock/start"; then
   echo "build-release: cannot record the release publication lock owner" >&2
   exit 1
 fi

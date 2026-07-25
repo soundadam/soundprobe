@@ -5,10 +5,15 @@ ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 workdir=$(mktemp -d "${TMPDIR:-/tmp}/njuprobe-release.XXXXXX")
 repo="$workdir/repo"
 concurrent_pid=
+reused_pid=
 cleanup() {
   if [ -n "$concurrent_pid" ]; then
     kill "$concurrent_pid" 2>/dev/null || true
     wait "$concurrent_pid" 2>/dev/null || true
+  fi
+  if [ -n "$reused_pid" ]; then
+    kill "$reused_pid" 2>/dev/null || true
+    wait "$reused_pid" 2>/dev/null || true
   fi
   rm -rf "$repo/dist" 2>/dev/null || true
   if [ -e "$repo/.git" ]; then
@@ -118,12 +123,14 @@ cmp "$formula" "$workdir/formula-before-failure.rb"
 assert_no_publication_residue
 
 (
-  exit 0
+  sleep 1
 ) &
 stale_lock_pid=$!
+stale_lock_start=$(LC_ALL=C ps -p "$stale_lock_pid" -o lstart= | awk '{$1=$1; print}')
 wait "$stale_lock_pid"
 mkdir "$repo/dist/.njuprobe-release.lock"
 printf '%s\n' "$stale_lock_pid" > "$repo/dist/.njuprobe-release.lock/pid"
+printf '%s\n' "$stale_lock_start" > "$repo/dist/.njuprobe-release.lock/start"
 if ! (
   cd "$repo"
   ./scripts/build-release.sh 0.1.0 HEAD >"$workdir/stale-lock.log" 2>&1
@@ -141,8 +148,43 @@ cmp "$archive" "$workdir/archive-before-failure.tar.gz"
 cmp "$formula" "$workdir/formula-before-failure.rb"
 assert_no_publication_residue
 
+sleep 30 &
+reused_pid=$!
+reused_start=$(LC_ALL=C ps -p "$reused_pid" -o lstart= | awk '{$1=$1; print}')
+mkdir "$repo/dist/.njuprobe-release.lock"
+printf '%s\n' "$reused_pid" > "$repo/dist/.njuprobe-release.lock/pid"
+printf '%s\n' 'Thu Jan 1 00:00:00 1970' > "$repo/dist/.njuprobe-release.lock/start"
+if ! (
+  cd "$repo"
+  ./scripts/build-release.sh 0.1.0 HEAD >"$workdir/reused-pid-lock.log" 2>&1
+); then
+  echo "release artifact test: reused PID release lock was not recovered" >&2
+  cat "$workdir/reused-pid-lock.log" >&2
+  exit 1
+fi
+if ! grep -q "recovered stale release publication lock from PID $reused_pid (process identity changed)" "$workdir/reused-pid-lock.log"; then
+  echo "release artifact test: reused PID recovery was not reported" >&2
+  cat "$workdir/reused-pid-lock.log" >&2
+  exit 1
+fi
+if ! kill -0 "$reused_pid" 2>/dev/null; then
+  echo "release artifact test: reused PID fixture was terminated" >&2
+  exit 1
+fi
+if [ "$(LC_ALL=C ps -p "$reused_pid" -o lstart= | awk '{$1=$1; print}')" != "$reused_start" ]; then
+  echo "release artifact test: reused PID fixture identity changed unexpectedly" >&2
+  exit 1
+fi
+kill "$reused_pid"
+wait "$reused_pid" 2>/dev/null || true
+reused_pid=
+cmp "$archive" "$workdir/archive-before-failure.tar.gz"
+cmp "$formula" "$workdir/formula-before-failure.rb"
+assert_no_publication_residue
+
 mkdir "$repo/dist/.njuprobe-release.lock"
 printf '%s\n' 'invalid-owner' > "$repo/dist/.njuprobe-release.lock/pid"
+printf '%s\n' 'invalid-start' > "$repo/dist/.njuprobe-release.lock/start"
 invalid_lock_succeeded=0
 if (
   cd "$repo"
@@ -154,7 +196,7 @@ if [ "$invalid_lock_succeeded" -eq 1 ]; then
   echo "release artifact test: invalid release lock unexpectedly succeeded" >&2
   exit 1
 fi
-if ! grep -q 'release publication lock has no valid owner PID' "$workdir/invalid-lock.log"; then
+if ! grep -q 'release publication lock has no valid owner process identity' "$workdir/invalid-lock.log"; then
   echo "release artifact test: invalid release lock did not fail closed" >&2
   cat "$workdir/invalid-lock.log" >&2
   exit 1
@@ -164,6 +206,7 @@ if [ "$(cat "$repo/dist/.njuprobe-release.lock/pid")" != 'invalid-owner' ]; then
   exit 1
 fi
 rm -f "$repo/dist/.njuprobe-release.lock/pid"
+rm -f "$repo/dist/.njuprobe-release.lock/start"
 rmdir "$repo/dist/.njuprobe-release.lock"
 assert_no_publication_residue
 

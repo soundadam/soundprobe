@@ -34,8 +34,8 @@ and verify:
 - deterministic release archives and Formula output, including preservation of
   the previous valid artifacts when a staged release build fails or is
   interrupted during publication, rejection of concurrent publication,
-  recovery of locks owned by exited publishers, and fail-closed handling of
-  locks without a valid owner PID.
+  recovery of locks owned by exited publishers or a reused PID, and fail-closed
+  handling of locks without a valid owner process identity.
 - deterministic source archives with safe paths, required files, and a matching
   Formula checksum.
 
