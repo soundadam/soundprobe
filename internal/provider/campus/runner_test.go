@@ -66,6 +66,16 @@ func TestRunnerRejectsWrongHelperVersion(t *testing.T) {
 	}
 }
 
+func TestRunnerTimesOutVersionProbe(t *testing.T) {
+	runner, _ := newFakeRunner(t, "testdata/librespeed-success-ipv4.json", HelperVersion, 0, "")
+	t.Setenv("NJUPROBE_FAKE_VERSION_SLEEP", "1")
+	runner.VersionTimeout = 25 * time.Millisecond
+	_, err := runner.Measure(context.Background(), provider.Request{Command: model.CommandCampus})
+	if !errors.Is(err, provider.ErrUnavailable) || !strings.Contains(err.Error(), "version probe timed out") {
+		t.Fatalf("error = %v, want timed-out ErrUnavailable", err)
+	}
+}
+
 func TestRunnerMapsEmptyResultToConnectFailure(t *testing.T) {
 	runner, _ := newFakeRunner(t, "", HelperVersion, 0, "[]")
 	measurement, err := runner.Measure(context.Background(), provider.Request{Command: model.CommandCampus})
@@ -147,6 +157,9 @@ func newFakeRunner(t *testing.T, fixture, version string, exitCode int, literalO
 	}
 	script := `#!/bin/sh
 if [ "${1:-}" = "--version" ]; then
+  if [ -n "${NJUPROBE_FAKE_VERSION_SLEEP:-}" ]; then
+    exec sleep "$NJUPROBE_FAKE_VERSION_SLEEP"
+  fi
   printf 'librespeed-cli %s (built on test)\n'
   exit 0
 fi
@@ -177,6 +190,7 @@ exit %d
 				return "", errors.New("not found")
 			},
 		},
+		VersionTimeout: 30 * time.Second,
 		Now: func() time.Time {
 			clock = clock.Add(250 * time.Millisecond)
 			return clock
