@@ -23,7 +23,7 @@ formula="$repo/dist/Formula/njuprobe.rb"
 
 assert_no_publication_residue() {
   if find "$repo/dist" \
-    \( -name '*.tmp.*' -o -name '*.backup.*' -o -name '.njuprobe-release.lock' \) \
+    \( -name '*.tmp.*' -o -name '*.backup.*' -o -name '.njuprobe-release.lock' -o -name '.njuprobe-release.lock.stale.*' \) \
     -print | grep -q .; then
     echo "release artifact test: build left publication staging files" >&2
     exit 1
@@ -115,6 +115,56 @@ if [ "$interrupted_build_succeeded" -eq 1 ]; then
 fi
 cmp "$archive" "$workdir/archive-before-failure.tar.gz"
 cmp "$formula" "$workdir/formula-before-failure.rb"
+assert_no_publication_residue
+
+(
+  exit 0
+) &
+stale_lock_pid=$!
+wait "$stale_lock_pid"
+mkdir "$repo/dist/.njuprobe-release.lock"
+printf '%s\n' "$stale_lock_pid" > "$repo/dist/.njuprobe-release.lock/pid"
+if ! (
+  cd "$repo"
+  ./scripts/build-release.sh 0.1.0 HEAD >"$workdir/stale-lock.log" 2>&1
+); then
+  echo "release artifact test: stale release lock was not recovered" >&2
+  cat "$workdir/stale-lock.log" >&2
+  exit 1
+fi
+if ! grep -q "recovered stale release publication lock from PID $stale_lock_pid" "$workdir/stale-lock.log"; then
+  echo "release artifact test: stale release lock recovery was not reported" >&2
+  cat "$workdir/stale-lock.log" >&2
+  exit 1
+fi
+cmp "$archive" "$workdir/archive-before-failure.tar.gz"
+cmp "$formula" "$workdir/formula-before-failure.rb"
+assert_no_publication_residue
+
+mkdir "$repo/dist/.njuprobe-release.lock"
+printf '%s\n' 'invalid-owner' > "$repo/dist/.njuprobe-release.lock/pid"
+invalid_lock_succeeded=0
+if (
+  cd "$repo"
+  ./scripts/build-release.sh 0.1.0 HEAD >"$workdir/invalid-lock.log" 2>&1
+); then
+  invalid_lock_succeeded=1
+fi
+if [ "$invalid_lock_succeeded" -eq 1 ]; then
+  echo "release artifact test: invalid release lock unexpectedly succeeded" >&2
+  exit 1
+fi
+if ! grep -q 'release publication lock has no valid owner PID' "$workdir/invalid-lock.log"; then
+  echo "release artifact test: invalid release lock did not fail closed" >&2
+  cat "$workdir/invalid-lock.log" >&2
+  exit 1
+fi
+if [ "$(cat "$repo/dist/.njuprobe-release.lock/pid")" != 'invalid-owner' ]; then
+  echo "release artifact test: invalid release lock was modified" >&2
+  exit 1
+fi
+rm -f "$repo/dist/.njuprobe-release.lock/pid"
+rmdir "$repo/dist/.njuprobe-release.lock"
 assert_no_publication_residue
 
 concurrent_fake_bin="$workdir/concurrent-fake-bin"

@@ -33,7 +33,9 @@ and verify:
 - Homebrew Formula template resources and unresolved placeholders.
 - deterministic release archives and Formula output, including preservation of
   the previous valid artifacts when a staged release build fails or is
-  interrupted during publication, and rejection of concurrent publication.
+  interrupted during publication, rejection of concurrent publication,
+  recovery of locks owned by exited publishers, and fail-closed handling of
+  locks without a valid owner PID.
 - deterministic source archives with safe paths, required files, and a matching
   Formula checksum.
 
