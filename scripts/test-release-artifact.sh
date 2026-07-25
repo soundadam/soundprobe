@@ -4,7 +4,12 @@ set -eu
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 workdir=$(mktemp -d "${TMPDIR:-/tmp}/njuprobe-release.XXXXXX")
 repo="$workdir/repo"
+concurrent_pid=
 cleanup() {
+  if [ -n "$concurrent_pid" ]; then
+    kill "$concurrent_pid" 2>/dev/null || true
+    wait "$concurrent_pid" 2>/dev/null || true
+  fi
   rm -rf "$repo/dist" 2>/dev/null || true
   if [ -e "$repo/.git" ]; then
     git -C "$ROOT" worktree remove "$repo" 2>/dev/null || true
@@ -15,6 +20,15 @@ trap cleanup EXIT HUP INT TERM
 
 archive="$repo/dist/njuprobe-0.1.0.tar.gz"
 formula="$repo/dist/Formula/njuprobe.rb"
+
+assert_no_publication_residue() {
+  if find "$repo/dist" \
+    \( -name '*.tmp.*' -o -name '*.backup.*' -o -name '.njuprobe-release.lock' \) \
+    -print | grep -q .; then
+    echo "release artifact test: build left publication staging files" >&2
+    exit 1
+  fi
+}
 
 git -C "$ROOT" worktree add --detach --quiet "$repo" HEAD
 if ! git -C "$ROOT" diff --quiet HEAD -- .; then
@@ -60,10 +74,7 @@ if [ "$invalid_template_succeeded" -eq 1 ]; then
 fi
 cmp "$archive" "$workdir/archive-before-failure.tar.gz"
 cmp "$formula" "$workdir/formula-before-failure.rb"
-if find "$repo/dist" -type f \( -name '*.tmp.*' -o -name '*.backup.*' \) | grep -q .; then
-  echo "release artifact test: failed build left temporary publication files" >&2
-  exit 1
-fi
+assert_no_publication_residue
 
 fake_bin="$workdir/fake-bin"
 signal_marker="$workdir/term-injected"
@@ -104,10 +115,92 @@ if [ "$interrupted_build_succeeded" -eq 1 ]; then
 fi
 cmp "$archive" "$workdir/archive-before-failure.tar.gz"
 cmp "$formula" "$workdir/formula-before-failure.rb"
-if find "$repo/dist" -type f \( -name '*.tmp.*' -o -name '*.backup.*' \) | grep -q .; then
-  echo "release artifact test: interrupted build left publication files" >&2
+assert_no_publication_residue
+
+concurrent_fake_bin="$workdir/concurrent-fake-bin"
+concurrent_ready="$workdir/concurrent-ready"
+concurrent_continue="$workdir/concurrent-continue"
+concurrent_log="$workdir/concurrent-build.log"
+mkdir "$concurrent_fake_bin"
+cat > "$concurrent_fake_bin/git" <<'SH'
+#!/bin/sh
+set -eu
+
+is_archive=0
+for argument in "$@"; do
+  if [ "$argument" = "archive" ]; then
+    is_archive=1
+  fi
+done
+if [ "$is_archive" -eq 1 ]; then
+  : > "${NJU_CONCURRENT_READY:?}"
+  while [ ! -e "${NJU_CONCURRENT_CONTINUE:?}" ]; do
+    sleep 0.05
+  done
+fi
+exec "${NJU_REAL_GIT:?}" "$@"
+SH
+chmod +x "$concurrent_fake_bin/git"
+
+(
+  cd "$repo"
+  NJU_REAL_GIT=$(command -v git) \
+    NJU_CONCURRENT_READY="$concurrent_ready" \
+    NJU_CONCURRENT_CONTINUE="$concurrent_continue" \
+    PATH="$concurrent_fake_bin:$PATH" \
+    ./scripts/build-release.sh 0.1.0 HEAD >"$concurrent_log" 2>&1
+) &
+concurrent_pid=$!
+
+wait_count=0
+while [ ! -e "$concurrent_ready" ]; do
+  if ! kill -0 "$concurrent_pid" 2>/dev/null; then
+    wait "$concurrent_pid" || true
+    concurrent_pid=
+    echo "release artifact test: concurrent fixture exited before acquiring the lock" >&2
+    cat "$concurrent_log" >&2
+    exit 1
+  fi
+  wait_count=$((wait_count + 1))
+  if [ "$wait_count" -ge 200 ]; then
+    echo "release artifact test: timed out waiting for the release lock fixture" >&2
+    exit 1
+  fi
+  sleep 0.05
+done
+
+concurrent_second_succeeded=0
+if (
+  cd "$repo"
+  ./scripts/build-release.sh 0.2.0 HEAD >"$workdir/concurrent-second.log" 2>&1
+); then
+  concurrent_second_succeeded=1
+fi
+if [ "$concurrent_second_succeeded" -eq 1 ]; then
+  echo "release artifact test: concurrent release unexpectedly succeeded" >&2
   exit 1
 fi
+if ! grep -q 'another release publication is already in progress' "$workdir/concurrent-second.log"; then
+  echo "release artifact test: concurrent release did not report lock contention" >&2
+  cat "$workdir/concurrent-second.log" >&2
+  exit 1
+fi
+if [ -e "$repo/dist/njuprobe-0.2.0.tar.gz" ]; then
+  echo "release artifact test: rejected concurrent release published an archive" >&2
+  exit 1
+fi
+
+: > "$concurrent_continue"
+if ! wait "$concurrent_pid"; then
+  concurrent_pid=
+  echo "release artifact test: lock-holding release failed" >&2
+  cat "$concurrent_log" >&2
+  exit 1
+fi
+concurrent_pid=
+cmp "$archive" "$workdir/archive-before-failure.tar.gz"
+cmp "$formula" "$workdir/formula-before-failure.rb"
+assert_no_publication_residue
 
 python3 - "$workdir/archive-first.tar.gz" "$workdir/formula-first.rb" <<'PY'
 import hashlib

@@ -64,10 +64,12 @@ temporary_archive="$archive.tmp.$$"
 temporary_formula="$ROOT/dist/Formula/.njuprobe.rb.$$"
 backup_archive="$archive.backup.$$"
 backup_formula="$formula.backup.$$"
+release_lock="$ROOT/dist/.njuprobe-release.lock"
 archive_backup_expected=0
 formula_backup_expected=0
 publishing=0
 publication_committed=0
+release_lock_acquired=0
 cleanup() {
   status=$?
   cleanup_failed=0
@@ -97,6 +99,11 @@ cleanup() {
     "$temporary_archive" \
     "$temporary_formula" || cleanup_failed=1
 
+  if [ "$release_lock_acquired" -eq 1 ]; then
+    rm -f "$release_lock/pid" || cleanup_failed=1
+    rmdir "$release_lock" || cleanup_failed=1
+  fi
+
   if [ "$cleanup_failed" -ne 0 ] && [ "$status" -eq 0 ]; then
     status=1
   fi
@@ -106,6 +113,16 @@ trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+if ! mkdir "$release_lock" 2>/dev/null; then
+  echo "build-release: another release publication is already in progress" >&2
+  exit 1
+fi
+release_lock_acquired=1
+if ! printf '%s\n' "$$" > "$release_lock/pid"; then
+  echo "build-release: cannot record the release publication lock owner" >&2
+  exit 1
+fi
 
 git -C "$ROOT" archive \
   --format=tar \
