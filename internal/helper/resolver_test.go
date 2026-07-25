@@ -35,8 +35,12 @@ func TestResolverPrecedence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.Path != libexec || resolved.Source != SourceLibexec {
-		t.Fatalf("resolved = %#v, want libexec %q", resolved, libexec)
+	canonicalLibexec, err := filepath.EvalSymlinks(libexec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Path != canonicalLibexec || resolved.Source != SourceLibexec {
+		t.Fatalf("resolved = %#v, want libexec %q", resolved, canonicalLibexec)
 	}
 
 	if err := os.Remove(libexec); err != nil {
@@ -87,8 +91,12 @@ func TestResolverFollowsExecutableSymlinkToLibexec(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved.Path != libexec || resolved.Source != SourceLibexec {
-		t.Fatalf("resolved = %#v, want libexec %q", resolved, libexec)
+	canonicalLibexec, err := filepath.EvalSymlinks(libexec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Path != canonicalLibexec || resolved.Source != SourceLibexec {
+		t.Fatalf("resolved = %#v, want libexec %q", resolved, canonicalLibexec)
 	}
 }
 
