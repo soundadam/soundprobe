@@ -36,6 +36,10 @@ and verify:
   interrupted during publication, rejection of concurrent publication,
   recovery of locks owned by exited publishers or a reused PID, and fail-closed
   handling of locks without a valid owner process identity.
+- release validation snapshots staged and unstaged tracked candidate changes
+  into a temporary commit before invoking `git archive`, so pre-commit checks
+  exercise the candidate source tree rather than silently archiving prior
+  `HEAD` content.
 - deterministic source archives with safe paths, required files, and a matching
   Formula checksum.
 

@@ -4,6 +4,7 @@ set -eu
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 workdir=$(mktemp -d "${TMPDIR:-/tmp}/njuprobe-release.XXXXXX")
 repo="$workdir/repo"
+candidate_probe=
 concurrent_pid=
 reused_pid=
 cleanup() {
@@ -15,6 +16,9 @@ cleanup() {
     kill "$reused_pid" 2>/dev/null || true
     wait "$reused_pid" 2>/dev/null || true
   fi
+  if [ -n "$candidate_probe" ] && [ -e "$candidate_probe/.git" ]; then
+    git -C "$ROOT" worktree remove --force "$candidate_probe" 2>/dev/null || true
+  fi
   rm -rf "$repo/dist" 2>/dev/null || true
   if [ -e "$repo/.git" ]; then
     git -C "$ROOT" worktree remove "$repo" 2>/dev/null || true
@@ -22,6 +26,16 @@ cleanup() {
   rm -rf "$workdir"
 }
 trap cleanup EXIT HUP INT TERM
+
+create_candidate_ref() {
+  source_repo=$1
+  candidate_ref=$(git -C "$source_repo" stash create "njuprobe release candidate") || return 1
+  if [ -n "$candidate_ref" ]; then
+    printf '%s\n' "$candidate_ref"
+  else
+    git -C "$source_repo" rev-parse --verify HEAD
+  fi
+}
 
 archive="$repo/dist/njuprobe-0.1.0.tar.gz"
 formula="$repo/dist/Formula/njuprobe.rb"
@@ -35,10 +49,8 @@ assert_no_publication_residue() {
   fi
 }
 
-git -C "$ROOT" worktree add --detach --quiet "$repo" HEAD
-if ! git -C "$ROOT" diff --quiet HEAD -- .; then
-  git -C "$ROOT" diff --binary HEAD -- . | git -C "$repo" apply --whitespace=nowarn
-fi
+candidate_ref=$(create_candidate_ref "$ROOT")
+git -C "$ROOT" worktree add --detach --quiet "$repo" "$candidate_ref"
 
 build_once() {
   output_archive=$1
@@ -294,6 +306,23 @@ concurrent_pid=
 cmp "$archive" "$workdir/archive-before-failure.tar.gz"
 cmp "$formula" "$workdir/formula-before-failure.rb"
 assert_no_publication_residue
+
+candidate_probe="$workdir/candidate-probe"
+printf '\nRELEASE_CANDIDATE_SNAPSHOT_PROBE\n' >> "$repo/README.md"
+probe_ref=$(create_candidate_ref "$repo")
+git -C "$ROOT" worktree add --detach --quiet "$candidate_probe" "$probe_ref"
+(
+  cd "$candidate_probe"
+  ./scripts/build-release.sh 0.1.0 HEAD >/dev/null
+)
+if ! tar -xOzf "$candidate_probe/dist/njuprobe-0.1.0.tar.gz" \
+  njuprobe-0.1.0/README.md | grep -q RELEASE_CANDIDATE_SNAPSHOT_PROBE; then
+  echo "release artifact test: candidate tracked changes were not archived" >&2
+  exit 1
+fi
+git -C "$ROOT" worktree remove --force "$candidate_probe"
+candidate_probe=
+git -C "$repo" checkout -- README.md
 
 python3 - "$workdir/archive-first.tar.gz" "$workdir/formula-first.rb" <<'PY'
 import hashlib
