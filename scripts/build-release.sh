@@ -64,13 +64,48 @@ temporary_archive="$archive.tmp.$$"
 temporary_formula="$ROOT/dist/Formula/.njuprobe.rb.$$"
 backup_archive="$archive.backup.$$"
 backup_formula="$formula.backup.$$"
+archive_backup_expected=0
+formula_backup_expected=0
+publishing=0
+publication_committed=0
 cleanup() {
+  status=$?
+  cleanup_failed=0
+  trap - EXIT HUP INT TERM
+
+  if [ "$publication_committed" -eq 0 ]; then
+    if [ "$publishing" -eq 1 ]; then
+      rm -f "$archive" "$formula" || cleanup_failed=1
+    fi
+
+    if [ "$archive_backup_expected" -eq 1 ] && \
+      { [ -e "$backup_archive" ] || [ -L "$backup_archive" ]; }; then
+      rm -f "$archive" || cleanup_failed=1
+      mv "$backup_archive" "$archive" || cleanup_failed=1
+    fi
+    if [ "$formula_backup_expected" -eq 1 ] && \
+      { [ -e "$backup_formula" ] || [ -L "$backup_formula" ]; }; then
+      rm -f "$formula" || cleanup_failed=1
+      mv "$backup_formula" "$formula" || cleanup_failed=1
+    fi
+  else
+    rm -f "$backup_archive" "$backup_formula" || cleanup_failed=1
+  fi
+
   rm -f \
     "$temporary_tar" \
     "$temporary_archive" \
-    "$temporary_formula"
+    "$temporary_formula" || cleanup_failed=1
+
+  if [ "$cleanup_failed" -ne 0 ] && [ "$status" -eq 0 ]; then
+    status=1
+  fi
+  exit "$status"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 git -C "$ROOT" archive \
   --format=tar \
@@ -91,48 +126,32 @@ fi
 
 "$ROOT/scripts/render-homebrew-formula.sh" "$version" "$source_sha256" "$temporary_formula"
 
-had_archive=0
-had_formula=0
 if [ -e "$archive" ] || [ -L "$archive" ]; then
-  mv "$archive" "$backup_archive"
-  had_archive=1
+  archive_backup_expected=1
+  if ! mv "$archive" "$backup_archive"; then
+    echo "build-release: cannot stage the existing archive for replacement" >&2
+    exit 1
+  fi
 fi
 if [ -e "$formula" ] || [ -L "$formula" ]; then
+  formula_backup_expected=1
   if ! mv "$formula" "$backup_formula"; then
-    if [ "$had_archive" -eq 1 ]; then
-      mv "$backup_archive" "$archive"
-    fi
     echo "build-release: cannot stage the existing Formula for replacement" >&2
     exit 1
   fi
-  had_formula=1
 fi
 
+publishing=1
 if ! mv "$temporary_archive" "$archive"; then
-  if [ "$had_archive" -eq 1 ]; then
-    mv "$backup_archive" "$archive"
-  fi
-  if [ "$had_formula" -eq 1 ]; then
-    mv "$backup_formula" "$formula"
-  fi
   echo "build-release: cannot publish the release archive" >&2
   exit 1
 fi
-temporary_archive=
 
 if ! mv "$temporary_formula" "$formula"; then
-  rm -f "$archive"
-  if [ "$had_archive" -eq 1 ]; then
-    mv "$backup_archive" "$archive"
-  fi
-  if [ "$had_formula" -eq 1 ]; then
-    mv "$backup_formula" "$formula"
-  fi
   echo "build-release: cannot publish the Homebrew Formula" >&2
   exit 1
 fi
-temporary_formula=
-rm -f "$backup_archive" "$backup_formula"
+publication_committed=1
 
 printf 'Release archive: %s\n' "$archive"
 printf 'Git commit:      %s\n' "$commit"

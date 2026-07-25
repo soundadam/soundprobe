@@ -32,7 +32,8 @@ and verify:
 - JSON output without ANSI escape sequences;
 - Homebrew Formula template resources and unresolved placeholders.
 - deterministic release archives and Formula output, including preservation of
-  the previous valid artifacts when a staged release build fails.
+  the previous valid artifacts when a staged release build fails or is
+  interrupted during publication.
 - deterministic source archives with safe paths, required files, and a matching
   Formula checksum.
 

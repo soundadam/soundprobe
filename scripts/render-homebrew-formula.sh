@@ -65,7 +65,10 @@ temporary_output="$output.tmp.$$"
 cleanup() {
   rm -f "$temporary_output"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 sed \
   -e "s/@VERSION@/$version/g" \
@@ -77,6 +80,5 @@ if grep -q '@[A-Z_][A-Z_]*@' "$temporary_output"; then
   exit 1
 fi
 mv -f "$temporary_output" "$output"
-temporary_output=
 
 printf 'Rendered Homebrew Formula: %s\n' "$output"

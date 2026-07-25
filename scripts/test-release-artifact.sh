@@ -65,6 +65,50 @@ if find "$repo/dist" -type f \( -name '*.tmp.*' -o -name '*.backup.*' \) | grep 
   exit 1
 fi
 
+fake_bin="$workdir/fake-bin"
+signal_marker="$workdir/term-injected"
+mkdir "$fake_bin"
+cat > "$fake_bin/mv" <<'SH'
+#!/bin/sh
+set -eu
+
+"${NJU_REAL_MV:?}" "$@"
+destination=
+for argument in "$@"; do
+  destination=$argument
+done
+case "$destination" in
+  */dist/Formula/njuprobe.rb)
+    if [ ! -e "${NJU_SIGNAL_MARKER:?}" ]; then
+      : > "$NJU_SIGNAL_MARKER"
+      kill -TERM "$PPID"
+    fi
+    ;;
+esac
+SH
+chmod +x "$fake_bin/mv"
+
+interrupted_build_succeeded=0
+if (
+  cd "$repo"
+  NJU_REAL_MV=$(command -v mv) \
+    NJU_SIGNAL_MARKER="$signal_marker" \
+    PATH="$fake_bin:$PATH" \
+    ./scripts/build-release.sh 0.1.0 HEAD >/dev/null 2>&1
+); then
+  interrupted_build_succeeded=1
+fi
+if [ "$interrupted_build_succeeded" -eq 1 ]; then
+  echo "release artifact test: interrupted publication unexpectedly succeeded" >&2
+  exit 1
+fi
+cmp "$archive" "$workdir/archive-before-failure.tar.gz"
+cmp "$formula" "$workdir/formula-before-failure.rb"
+if find "$repo/dist" -type f \( -name '*.tmp.*' -o -name '*.backup.*' \) | grep -q .; then
+  echo "release artifact test: interrupted build left publication files" >&2
+  exit 1
+fi
+
 python3 - "$workdir/archive-first.tar.gz" "$workdir/formula-first.rb" <<'PY'
 import hashlib
 import pathlib
