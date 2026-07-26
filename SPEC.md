@@ -20,10 +20,13 @@ soundVPN/SFM/NJUConnect.
 
 ### 2.1 NJU campus provider
 
-Run the pinned LibreSpeed CLI helper with the equivalent of:
+Keep the two NJU server definitions pinned with the release, validate that the
+selected ID resolves to the expected NJU hostname, and provide the JSON to the
+pinned LibreSpeed CLI helper through `--local-json -`. Then run the helper with
+the equivalent of:
 
 ```text
---server-json http://speed.nju.edu.cn/cli.json
+--local-json -
 --server 1
 --duration 10
 --concurrent 3
@@ -33,7 +36,10 @@ Run the pinned LibreSpeed CLI helper with the equivalent of:
 
 Do not pass `--share` or any telemetry option. The default test includes both
 download and upload. Server ID 1 is the IPv4 default. `campus --ipv6` explicitly
-selects the IPv6 service and must not silently fall back to IPv4.
+selects server ID 2 and passes `--ipv6` for the measurement connections.
+Supplying the pinned configuration is not a measurement fallback; the selected
+IPv6 measurement must never silently fall back to IPv4. Routine tests remain
+offline and do not fetch the server list from NJU.
 
 Parse the final JSON for server/client metadata, ping, jitter, upload/download
 bit rates, and transferred byte counts. LibreSpeed does not provide a stable

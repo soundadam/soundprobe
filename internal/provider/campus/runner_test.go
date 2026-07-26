@@ -2,6 +2,7 @@ package campus
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -30,7 +31,7 @@ func TestRunnerMeasuresIPv4WithExactArguments(t *testing.T) {
 	}
 	gotArgs := readArgs(t, argsPath)
 	wantArgs := []string{
-		"--server-json", ServerListURL,
+		"--local-json", "-",
 		"--server", IPv4ServerID,
 		"--duration", "10",
 		"--concurrent", "3",
@@ -41,6 +42,7 @@ func TestRunnerMeasuresIPv4WithExactArguments(t *testing.T) {
 	if !reflect.DeepEqual(gotArgs, wantArgs) {
 		t.Fatalf("args = %#v, want %#v", gotArgs, wantArgs)
 	}
+	assertFakeServerList(t, argsPath)
 }
 
 func TestRunnerMeasuresIPv6WithoutFallback(t *testing.T) {
@@ -53,9 +55,10 @@ func TestRunnerMeasuresIPv6WithoutFallback(t *testing.T) {
 		t.Fatalf("server = %v", measurement.ServerFQDN)
 	}
 	gotArgs := readArgs(t, argsPath)
-	if !containsPair(gotArgs, "--server", IPv6ServerID) || !contains(gotArgs, "--ipv6") || contains(gotArgs, "--ipv4") {
+	if !containsPair(gotArgs, "--local-json", "-") || !containsPair(gotArgs, "--server", IPv6ServerID) || !contains(gotArgs, "--ipv6") || contains(gotArgs, "--ipv4") || contains(gotArgs, "--server-json") {
 		t.Fatalf("IPv6 arguments = %#v", gotArgs)
 	}
+	assertFakeServerList(t, argsPath)
 }
 
 func TestRunnerRejectsWrongHelperVersion(t *testing.T) {
@@ -109,8 +112,8 @@ func TestRunnerClassifiesDownloadFailure(t *testing.T) {
 	}
 }
 
-func TestRunnerClassifiesServerListConnectionReset(t *testing.T) {
-	message := `Error when fetching server list: Get "http://speed.nju.edu.cn/cli.json/.well-known/librespeed": read tcp4 198.51.100.10:50681->203.0.113.20:80: read: connection reset by peer Terminated due to error`
+func TestRunnerClassifiesConnectionReset(t *testing.T) {
+	message := `Get "http://speed.nju.edu.cn/backend/empty.php": read tcp4 198.51.100.10:50681->203.0.113.20:80: read: connection reset by peer`
 	runner, _ := newFakeRunner(t, "", HelperVersion, 1, message)
 	measurement, err := runner.Measure(context.Background(), provider.Request{Command: model.CommandCampus})
 	if err != nil {
@@ -121,6 +124,29 @@ func TestRunnerClassifiesServerListConnectionReset(t *testing.T) {
 	}
 	if measurement.DownloadMbps == nil || *measurement.DownloadMbps != 0 || measurement.UploadMbps == nil || *measurement.UploadMbps != 0 {
 		t.Fatalf("failed speeds = %v/%v", measurement.DownloadMbps, measurement.UploadMbps)
+	}
+}
+
+func TestValidateServerListRejectsUnexpectedSelectedServer(t *testing.T) {
+	err := validateServerList([]byte(`[{"id":2,"server":"http://speed.nju.edu.cn"}]`), IPv6ServerID, "speed6.nju.edu.cn")
+	if err == nil || !strings.Contains(err.Error(), "unexpected host") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestPinnedServerListCoversBothFamilies(t *testing.T) {
+	if err := validateServerList([]byte(pinnedServerListJSON), IPv4ServerID, "speed.nju.edu.cn"); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateServerList([]byte(pinnedServerListJSON), IPv6ServerID, "speed6.nju.edu.cn"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateServerListRejectsUnsafeScheme(t *testing.T) {
+	err := validateServerList([]byte(`[{"id":1,"server":"ftp://speed.nju.edu.cn"}]`), IPv4ServerID, "speed.nju.edu.cn")
+	if err == nil || !strings.Contains(err.Error(), "unsupported URL scheme") {
+		t.Fatalf("error = %v", err)
 	}
 }
 
@@ -160,6 +186,7 @@ func newFakeRunner(t *testing.T, fixture, version string, exitCode int, literalO
 	executable := filepath.Join(root, "prefix", "bin", "njuprobe")
 	helperPath := filepath.Join(root, "prefix", "libexec", "njuprobe", HelperName)
 	argsPath := filepath.Join(root, "args.txt")
+	stdinPath := filepath.Join(root, "stdin.json")
 	writeTestExecutable(t, executable, "#!/bin/sh\nexit 0\n")
 
 	fixturePath := ""
@@ -179,6 +206,7 @@ if [ "${1:-}" = "--version" ]; then
   exit 0
 fi
 printf '%%s\n' "$@" > "$NJUPROBE_FAKE_ARGS"
+cat > "$NJUPROBE_FAKE_STDIN"
 if [ -n "${NJUPROBE_FAKE_SLEEP:-}" ]; then
   exec sleep "$NJUPROBE_FAKE_SLEEP"
 fi
@@ -195,6 +223,7 @@ exit %d
 	script = fmt.Sprintf(script, version, fixturePath, fixturePath, literalOutput, exitCode, literalOutput, exitCode)
 	writeTestExecutable(t, helperPath, script)
 	t.Setenv("NJUPROBE_FAKE_ARGS", argsPath)
+	t.Setenv("NJUPROBE_FAKE_STDIN", stdinPath)
 
 	clock := time.Date(2026, 7, 21, 8, 0, 0, 0, time.UTC)
 	return &Runner{
@@ -211,6 +240,24 @@ exit %d
 			return clock
 		},
 	}, argsPath
+}
+
+func assertFakeServerList(t *testing.T, argsPath string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(argsPath), "stdin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got, want any
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("stdin JSON: %v", err)
+	}
+	if err := json.Unmarshal([]byte(pinnedServerListJSON), &want); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("stdin = %#v, want %#v", got, want)
+	}
 }
 
 func writeTestExecutable(t *testing.T, path, content string) {
