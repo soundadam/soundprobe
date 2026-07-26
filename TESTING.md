@@ -177,9 +177,12 @@ serverFqdn: an M-Lab server selected through Locate
 ./bin/njuprobe
 ```
 
-The interactive view should remain one fixed block. NJU completes first; only
-then should M-Lab begin. On completion, the block is replaced by one durable
-summary containing both providers.
+The interactive view should remain one fixed block. Campus and M-Lab must have
+equal four-row panels for status, activity, rate, and detail. Campus completes or
+fails first; only then should M-Lab begin. During M-Lab download/upload, live
+rates should update without changing the panel height. Either provider may fail
+independently. On completion, the block is replaced by one durable summary
+containing both providers.
 
 For script-safe acceptance:
 

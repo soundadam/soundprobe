@@ -97,7 +97,11 @@ func (runner *Runner) Measure(ctx context.Context, request provider.Request) (mo
 		}
 		return model.Measurement{}, err
 	}
-	request.Report(provider.ProgressEvent{Provider: model.ProviderCampus, Phase: provider.ProgressMeasuring})
+	request.Report(provider.ProgressEvent{
+		Provider: model.ProviderCampus,
+		Phase:    provider.ProgressMeasuring,
+		Server:   expectedHost,
+	})
 
 	measurementCtx, cancel := context.WithTimeout(ctx, runner.Timeout)
 	defer cancel()

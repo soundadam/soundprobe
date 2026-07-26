@@ -10,7 +10,7 @@ import (
 	"github.com/soundadam/njuprobe/internal/provider"
 )
 
-func TestProgressModelRendersFixedProviderState(t *testing.T) {
+func TestProgressModelRendersEqualProviderPanels(t *testing.T) {
 	ready := make(chan struct{})
 	progress := newProgressModel("test", model.CommandRun, ready)
 	progress.startedAt = time.Date(2026, 7, 22, 8, 0, 0, 0, time.UTC)
@@ -25,6 +25,7 @@ func TestProgressModelRendersFixedProviderState(t *testing.T) {
 	_, _ = progress.Update(progressMessage(provider.ProgressEvent{
 		Provider:     model.ProviderCampus,
 		Phase:        provider.ProgressComplete,
+		Server:       "speed.nju.edu.cn",
 		DownloadMbps: model.Pointer(876.54),
 		UploadMbps:   model.Pointer(345.67),
 	}))
@@ -32,6 +33,7 @@ func TestProgressModelRendersFixedProviderState(t *testing.T) {
 		Provider: model.ProviderMLab,
 		Phase:    provider.ProgressDownloading,
 		Test:     "download",
+		Server:   "ndt.example.net",
 		LiveMbps: model.Pointer(80.0),
 	}))
 	_, _ = progress.Update(tickMessage(progress.now))
@@ -40,8 +42,14 @@ func TestProgressModelRendersFixedProviderState(t *testing.T) {
 	for _, expected := range []string{
 		"NJUProbe test",
 		"Network   en0 · wifi · NJU-WLAN",
-		"Campus    complete · ↓ 876.54 Mbps · ↑ 345.67 Mbps",
-		"M-Lab     downloading · download 80.00 Mbps",
+		"Order     Campus → M-Lab · sequential",
+		"Campus    ✓ complete · 00:00",
+		"Activity  [████████████████████████]",
+		"Rate      ↓ 876.54 Mbps · ↑ 345.67 Mbps",
+		"Detail    server speed.nju.edu.cn",
+		"M-Lab     ◐ downloading · 00:00",
+		"Rate      ↓ 80.00 Mbps · ↑ —",
+		"Detail    server ndt.example.net",
 		"Elapsed   00:12",
 		"Ctrl-C    cancel",
 	} {
@@ -49,8 +57,90 @@ func TestProgressModelRendersFixedProviderState(t *testing.T) {
 			t.Fatalf("view missing %q:\n%s", expected, view)
 		}
 	}
-	if len(strings.Split(view, "\n")) != 7 {
-		t.Fatalf("view lines = %d, want 7", len(strings.Split(view, "\n")))
+	if len(strings.Split(view, "\n")) != 13 {
+		t.Fatalf("view lines = %d, want 13", len(strings.Split(view, "\n")))
+	}
+}
+
+func TestProgressModelKeepsLiveRatesAndRendersEitherProviderFailure(t *testing.T) {
+	ready := make(chan struct{})
+	progress := newProgressModel("test", model.CommandRun, ready)
+	progress.startedAt = time.Unix(0, 0)
+	firstTick := progress.startedAt.Add(time.Second)
+	_, _ = progress.Update(progressMessage(provider.ProgressEvent{
+		Provider: model.ProviderMLab,
+		Phase:    provider.ProgressDownloading,
+		Test:     "download",
+		Server:   "ndt.example.net",
+		LiveMbps: model.Pointer(33.67),
+	}))
+	_, _ = progress.Update(tickMessage(firstTick))
+
+	secondTick := firstTick.Add(time.Second)
+	_, _ = progress.Update(progressMessage(provider.ProgressEvent{
+		Provider: model.ProviderMLab,
+		Phase:    provider.ProgressUploading,
+		Test:     "upload",
+		LiveMbps: model.Pointer(4.75),
+	}))
+	_, _ = progress.Update(progressMessage(provider.ProgressEvent{
+		Provider: model.ProviderCampus,
+		Phase:    provider.ProgressFailed,
+		Message:  "server unreachable",
+	}))
+	_, _ = progress.Update(tickMessage(secondTick))
+
+	view := progress.View().Content
+	for _, expected := range []string{
+		"Campus    × failed",
+		"error: server unreachable",
+		"M-Lab     ◐ uploading",
+		"Rate      ↓ 33.67 Mbps · ↑ 4.75 Mbps",
+		"server ndt.example.net",
+	} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("view missing %q:\n%s", expected, view)
+		}
+	}
+}
+
+func TestProgressModelRendersMLabFailureWithTheSamePanelContract(t *testing.T) {
+	ready := make(chan struct{})
+	progress := newProgressModel("test", model.CommandRun, ready)
+	now := time.Unix(10, 0)
+	_, _ = progress.Update(progressMessage(provider.ProgressEvent{
+		Provider: model.ProviderMLab,
+		Phase:    provider.ProgressFailed,
+		Test:     "upload",
+		Server:   "ndt.example.net",
+		Message:  "dial tcp: network is unreachable",
+	}))
+	_, _ = progress.Update(tickMessage(now))
+
+	view := progress.View().Content
+	for _, expected := range []string{
+		"M-Lab     × failed · upload",
+		"Activity  [────────────────────────]",
+		"Rate      ↓ — · ↑ —",
+		"Detail    error: dial tcp: network is unreachable",
+	} {
+		if !strings.Contains(view, expected) {
+			t.Fatalf("view missing %q:\n%s", expected, view)
+		}
+	}
+}
+
+func TestActivityBarAnimatesWithoutPretendingPercentage(t *testing.T) {
+	first := renderActivity(provider.ProgressMeasuring, time.Unix(0, 0))
+	second := renderActivity(provider.ProgressMeasuring, time.Unix(0, int64(refreshInterval)))
+	if first == second {
+		t.Fatalf("activity bar did not animate: %q", first)
+	}
+	if strings.Contains(first, "%") || strings.Contains(second, "%") {
+		t.Fatalf("activity bar presents a false percentage: %q / %q", first, second)
+	}
+	if got := renderActivity(provider.ProgressComplete, time.Time{}); strings.Count(got, "█") != activityWidth {
+		t.Fatalf("complete activity = %q", got)
 	}
 }
 
