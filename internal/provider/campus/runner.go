@@ -3,10 +3,13 @@ package campus
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,12 +23,32 @@ import (
 const (
 	HelperName          = "librespeed-cli"
 	HelperVersion       = "v1.0.13"
-	ServerListURL       = "http://speed.nju.edu.cn/cli.json"
 	IPv4ServerID        = "1"
 	IPv6ServerID        = "2"
 	ConcurrentRequests  = 3
 	MeasurementDuration = 10
 )
+
+const pinnedServerListJSON = `[
+  {
+    "id": 1,
+    "name": "NJU Speed Test v4",
+    "server": "http://speed.nju.edu.cn",
+    "dlURL": "/backend/garbage.php",
+    "ulURL": "/backend/empty.php",
+    "pingURL": "/backend/empty.php",
+    "getIpURL": "/backend/getIP.php"
+  },
+  {
+    "id": 2,
+    "name": "NJU Speed Test v6",
+    "server": "http://speed6.nju.edu.cn",
+    "dlURL": "/backend/garbage.php",
+    "ulURL": "/backend/empty.php",
+    "pingURL": "/backend/empty.php",
+    "getIpURL": "/backend/getIP.php"
+  }
+]`
 
 var versionPattern = regexp.MustCompile(`(?m)^librespeed-cli\s+(v?[0-9]+\.[0-9]+\.[0-9]+)\b`)
 
@@ -79,8 +102,12 @@ func (runner *Runner) Measure(ctx context.Context, request provider.Request) (mo
 	measurementCtx, cancel := context.WithTimeout(ctx, runner.Timeout)
 	defer cancel()
 	startedAt := runner.Now()
+	serverList := []byte(pinnedServerListJSON)
+	if err := validateServerList(serverList, serverID, expectedHost); err != nil {
+		return model.Measurement{}, fmt.Errorf("validate pinned NJU server list: %w", err)
+	}
 	args := []string{
-		"--server-json", ServerListURL,
+		"--local-json", "-",
 		"--server", serverID,
 		"--duration", fmt.Sprintf("%d", MeasurementDuration),
 		"--concurrent", fmt.Sprintf("%d", ConcurrentRequests),
@@ -91,6 +118,7 @@ func (runner *Runner) Measure(ctx context.Context, request provider.Request) (mo
 	command := exec.CommandContext(measurementCtx, resolved.Path, args...)
 	stdout := newCappedBuffer(128 * 1024)
 	stderr := newCappedBuffer(16 * 1024)
+	command.Stdin = bytes.NewReader(serverList)
 	command.Stdout = stdout
 	command.Stderr = stderr
 	err = command.Run()
@@ -161,6 +189,49 @@ func (runner *Runner) setDefaults() {
 	if runner.Now == nil {
 		runner.Now = time.Now
 	}
+}
+
+type serverListEntry struct {
+	ID     int    `json:"id"`
+	Server string `json:"server"`
+}
+
+func validateServerList(data []byte, selectedID, expectedHost string) error {
+	var entries []serverListEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return fmt.Errorf("decode JSON: %w", err)
+	}
+	wantedID, err := strconv.Atoi(selectedID)
+	if err != nil {
+		return fmt.Errorf("invalid selected server ID %q", selectedID)
+	}
+	found := false
+	for _, entry := range entries {
+		if entry.ID != wantedID {
+			continue
+		}
+		if found {
+			return fmt.Errorf("server ID %d is duplicated", wantedID)
+		}
+		serverURL, err := url.Parse(entry.Server)
+		if err != nil || serverURL.Hostname() == "" {
+			return fmt.Errorf("server ID %d has invalid URL %q", wantedID, entry.Server)
+		}
+		if serverURL.Scheme != "http" && serverURL.Scheme != "https" {
+			return fmt.Errorf("server ID %d has unsupported URL scheme %q", wantedID, serverURL.Scheme)
+		}
+		if serverURL.User != nil {
+			return fmt.Errorf("server ID %d URL must not contain user information", wantedID)
+		}
+		if !strings.EqualFold(serverURL.Hostname(), expectedHost) {
+			return fmt.Errorf("server ID %d resolves to unexpected host %q", wantedID, serverURL.Hostname())
+		}
+		found = true
+	}
+	if !found {
+		return fmt.Errorf("server ID %d is missing", wantedID)
+	}
+	return nil
 }
 
 func (runner *Runner) probeVersion(ctx context.Context, path string) (string, error) {
