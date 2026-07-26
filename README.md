@@ -22,14 +22,24 @@ The v0.1 implementation includes:
 - explicit M-Lab privacy consent;
 - pinned, separately installed helper executables;
 - offline fixtures for all routine tests;
-- source-release and Homebrew Formula scaffolding.
+- source-release and Homebrew Formula packaging.
 
-No public release or Homebrew tap has been published yet. See
-[RELEASE.md](RELEASE.md) for the release gates.
+The latest stable release is distributed through the public
+`soundadam/homebrew-tap`. The upstream source repository may remain private;
+public, immutable source archives are mirrored through `soundadam/homebrew-dist`.
+See [RELEASE.md](RELEASE.md) for the release gates.
 
 ## Daily use
 
-Install the development helpers and build the CLI:
+Install the stable CLI through Homebrew:
+
+```sh
+brew tap soundadam/tap
+brew install njuprobe
+njuprobe doctor
+```
+
+For source development, install the pinned helpers and build locally:
 
 ```sh
 make tools
