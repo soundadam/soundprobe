@@ -37,6 +37,26 @@ func TestParseResult(t *testing.T) {
 	}
 }
 
+func TestParseResultAllowsMissingClientIP(t *testing.T) {
+	data, err := os.ReadFile("testdata/librespeed-success-no-client-ip.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	measurement, err := parseResult(data, "ipv4", HelperVersion, 21_500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if measurement.ClientPublicIP != nil {
+		t.Fatalf("client IP = %v, want nil", measurement.ClientPublicIP)
+	}
+	if measurement.DownloadMbps == nil || *measurement.DownloadMbps != 31.29 {
+		t.Fatalf("download = %v", measurement.DownloadMbps)
+	}
+	if measurement.UploadMbps == nil || *measurement.UploadMbps != 3.96 {
+		t.Fatalf("upload = %v", measurement.UploadMbps)
+	}
+}
+
 func TestParseResultRejectsMalformedAndMultipleResults(t *testing.T) {
 	tests := []struct {
 		name   string

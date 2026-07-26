@@ -177,7 +177,9 @@ The failure object contains a stable stage (`helper`, `dns`, `connect`,
 message. It must not contain environment dumps or provider raw events.
 
 SSID/BSSID and other best-effort fields are `null` when macOS permissions or
-hardware do not expose them; their absence must not fail a bandwidth test.
+hardware do not expose them; their absence must not fail a bandwidth test. A
+provider-reported client public IP is also `null` when that provider omits it;
+a missing client IP must not invalidate otherwise complete measurement data.
 
 ## 6. Helper discovery and packaging
 
