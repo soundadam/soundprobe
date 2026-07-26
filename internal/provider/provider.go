@@ -161,9 +161,14 @@ func progressFromMeasurement(measurement model.Measurement) ProgressEvent {
 	case model.ProviderStatusSkipped:
 		phase = ProgressWaiting
 	}
+	server := ""
+	if measurement.ServerFQDN != nil {
+		server = *measurement.ServerFQDN
+	}
 	return ProgressEvent{
 		Provider:     measurement.Provider,
 		Phase:        phase,
+		Server:       server,
 		DownloadMbps: measurement.DownloadMbps,
 		UploadMbps:   measurement.UploadMbps,
 		Message:      message,

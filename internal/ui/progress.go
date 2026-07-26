@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -14,6 +15,13 @@ import (
 )
 
 const refreshInterval = 250 * time.Millisecond
+
+const (
+	activityWidth    = 24
+	activityPulse    = 5
+	detailRuneLimit  = 58
+	continuationLead = "          "
+)
 
 type ProgressRenderer struct {
 	program *tea.Program
@@ -83,10 +91,11 @@ type providerState struct {
 	phase        provider.ProgressPhase
 	test         string
 	server       string
-	liveMbps     *float64
 	downloadMbps *float64
 	uploadMbps   *float64
 	message      string
+	startedAt    time.Time
+	endedAt      time.Time
 }
 
 type progressModel struct {
@@ -147,11 +156,11 @@ func (progress *progressModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		progress.pending = append(progress.pending, provider.ProgressEvent(message))
 		return progress, nil
 	case tickMessage:
+		progress.now = time.Time(message)
 		for _, event := range progress.pending {
 			progress.applyEvent(event)
 		}
 		progress.pending = progress.pending[:0]
-		progress.now = time.Time(message)
 		return progress, tick()
 	case stopMessage:
 		progress.blank = true
@@ -166,17 +175,38 @@ func (progress *progressModel) applyEvent(event provider.ProgressEvent) {
 		return
 	}
 	state := progress.providers[event.Provider]
+	if state.startedAt.IsZero() && event.Phase != provider.ProgressWaiting {
+		state.startedAt = progress.now
+	}
 	state.phase = event.Phase
-	state.test = event.Test
-	state.server = event.Server
-	state.liveMbps = cloneFloat(event.LiveMbps)
+	if event.Test != "" {
+		state.test = event.Test
+	}
+	if event.Server != "" {
+		state.server = event.Server
+	}
+	if event.LiveMbps != nil {
+		switch event.Test {
+		case "download":
+			state.downloadMbps = cloneFloat(event.LiveMbps)
+		case "upload":
+			state.uploadMbps = cloneFloat(event.LiveMbps)
+		}
+	}
 	if event.DownloadMbps != nil {
 		state.downloadMbps = cloneFloat(event.DownloadMbps)
 	}
 	if event.UploadMbps != nil {
 		state.uploadMbps = cloneFloat(event.UploadMbps)
 	}
-	state.message = event.Message
+	if event.Message != "" {
+		state.message = event.Message
+	} else if event.Phase == provider.ProgressComplete {
+		state.message = ""
+	}
+	if isTerminalPhase(event.Phase) && state.endedAt.IsZero() {
+		state.endedAt = progress.now
+	}
 	progress.providers[event.Provider] = state
 }
 
@@ -187,16 +217,29 @@ func (progress *progressModel) View() tea.View {
 	lines := []string{
 		fmt.Sprintf("NJUProbe %s", progress.version),
 		fmt.Sprintf("Network   %s", renderNetwork(progress.network)),
-		fmt.Sprintf("Mode      %s · sequential", progress.command),
+		fmt.Sprintf("Order     %s", renderOrder(progress.command)),
 	}
 	for _, name := range progress.order {
-		lines = append(lines, renderProvider(name, progress.providers[name]))
+		lines = append(lines, renderProvider(name, progress.providers[name], progress.now)...)
 	}
 	lines = append(lines,
 		fmt.Sprintf("Elapsed   %s", formatElapsed(progress.now.Sub(progress.startedAt))),
 		"Ctrl-C    cancel",
 	)
 	return tea.NewView(strings.Join(lines, "\n"))
+}
+
+func renderOrder(command model.Command) string {
+	switch command {
+	case model.CommandRun:
+		return "Campus → M-Lab · sequential"
+	case model.CommandCampus:
+		return "Campus"
+	case model.CommandMLab:
+		return "M-Lab"
+	default:
+		return string(command)
+	}
 }
 
 func renderNetwork(network model.NetworkContext) string {
@@ -216,24 +259,146 @@ func renderNetwork(network model.NetworkContext) string {
 	return strings.Join(parts, " · ")
 }
 
-func renderProvider(name model.Provider, state providerState) string {
+func renderProvider(name model.Provider, state providerState, now time.Time) []string {
 	label := "Campus"
 	if name == model.ProviderMLab {
 		label = "M-Lab"
 	}
-	status := string(state.phase)
-	if state.phase == provider.ProgressComplete {
-		status = fmt.Sprintf("complete · ↓ %s · ↑ %s", formatMbps(state.downloadMbps), formatMbps(state.uploadMbps))
-	} else if state.liveMbps != nil {
-		direction := state.test
-		if direction == "" {
-			direction = "live"
-		}
-		status = fmt.Sprintf("%s · %s %.2f Mbps", state.phase, direction, *state.liveMbps)
-	} else if state.message != "" {
-		status = fmt.Sprintf("%s · %s", state.phase, state.message)
+	status := fmt.Sprintf("%-9s %s %s", label, phaseMarker(state.phase), phaseLabel(state.phase, state.test))
+	if elapsed, ok := providerElapsed(state, now); ok {
+		status += " · " + formatElapsed(elapsed)
 	}
-	return fmt.Sprintf("%-9s %s", label, status)
+	return []string{
+		status,
+		fmt.Sprintf("%sActivity  %s", continuationLead, renderActivity(state.phase, now)),
+		fmt.Sprintf("%sRate      ↓ %s · ↑ %s", continuationLead, formatMbps(state.downloadMbps), formatMbps(state.uploadMbps)),
+		fmt.Sprintf("%sDetail    %s", continuationLead, providerDetail(state)),
+	}
+}
+
+func phaseMarker(phase provider.ProgressPhase) string {
+	switch phase {
+	case provider.ProgressComplete:
+		return "✓"
+	case provider.ProgressFailed:
+		return "×"
+	case provider.ProgressCancelled:
+		return "■"
+	case provider.ProgressWaiting:
+		return "○"
+	default:
+		return "◐"
+	}
+}
+
+func phaseLabel(phase provider.ProgressPhase, test string) string {
+	switch phase {
+	case provider.ProgressWaiting:
+		return "waiting"
+	case provider.ProgressStarting:
+		return "starting"
+	case provider.ProgressConnecting:
+		return "connecting"
+	case provider.ProgressMeasuring:
+		return "measuring"
+	case provider.ProgressDownloading:
+		return "downloading"
+	case provider.ProgressUploading:
+		return "uploading"
+	case provider.ProgressComplete:
+		return "complete"
+	case provider.ProgressFailed:
+		if test != "" {
+			return "failed · " + test
+		}
+		return "failed"
+	case provider.ProgressCancelled:
+		return "cancelled"
+	default:
+		return string(phase)
+	}
+}
+
+func renderActivity(phase provider.ProgressPhase, now time.Time) string {
+	if phase == provider.ProgressComplete {
+		return "[" + strings.Repeat("█", activityWidth) + "]"
+	}
+	if phase == provider.ProgressWaiting {
+		return "[" + strings.Repeat("░", activityWidth) + "]"
+	}
+	if phase == provider.ProgressFailed || phase == provider.ProgressCancelled {
+		return "[" + strings.Repeat("─", activityWidth) + "]"
+	}
+	position := int(now.UnixNano()/int64(refreshInterval)) % (activityWidth + activityPulse)
+	var builder strings.Builder
+	builder.WriteByte('[')
+	for index := 0; index < activityWidth; index++ {
+		distance := position - index
+		if distance >= 0 && distance < activityPulse {
+			builder.WriteRune('█')
+		} else {
+			builder.WriteRune('░')
+		}
+	}
+	builder.WriteByte(']')
+	return builder.String()
+}
+
+func providerDetail(state providerState) string {
+	if state.message != "" && (state.phase == provider.ProgressFailed || state.phase == provider.ProgressCancelled) {
+		return truncateRunes("error: "+state.message, detailRuneLimit)
+	}
+	if state.server != "" {
+		return truncateRunes("server "+state.server, detailRuneLimit)
+	}
+	switch state.phase {
+	case provider.ProgressWaiting:
+		return "not started"
+	case provider.ProgressStarting:
+		return "preparing provider"
+	case provider.ProgressConnecting:
+		return "selecting and connecting to server"
+	case provider.ProgressMeasuring:
+		return "download and upload measurement active"
+	case provider.ProgressDownloading:
+		return "download measurement active"
+	case provider.ProgressUploading:
+		return "upload measurement active"
+	case provider.ProgressComplete:
+		return "measurement complete"
+	case provider.ProgressFailed:
+		return "measurement failed"
+	case provider.ProgressCancelled:
+		return "measurement cancelled"
+	default:
+		return "—"
+	}
+}
+
+func providerElapsed(state providerState, now time.Time) (time.Duration, bool) {
+	if state.startedAt.IsZero() {
+		return 0, false
+	}
+	end := now
+	if !state.endedAt.IsZero() {
+		end = state.endedAt
+	}
+	return end.Sub(state.startedAt), true
+}
+
+func isTerminalPhase(phase provider.ProgressPhase) bool {
+	return phase == provider.ProgressComplete || phase == provider.ProgressFailed || phase == provider.ProgressCancelled
+}
+
+func truncateRunes(value string, limit int) string {
+	if limit <= 0 || utf8.RuneCountInString(value) <= limit {
+		return value
+	}
+	runes := []rune(value)
+	if limit == 1 {
+		return "…"
+	}
+	return string(runes[:limit-1]) + "…"
 }
 
 func formatMbps(value *float64) string {

@@ -114,15 +114,26 @@ Exit codes are stable:
 
 ### 3.2 Interactive renderer
 
-Use Bubble Tea v2 in inline mode, not alternate-screen mode. Redraw a fixed
-six-to-eight-line block at no more than four frames per second. The view shows:
+Use Bubble Tea v2 in inline mode, not alternate-screen mode. Redraw one fixed
+block at no more than four frames per second. Campus and M-Lab are peer
+providers: they use the same status, activity, rate, and detail rows; their only
+ordering distinction is that Campus runs before M-Lab. The view shows:
 
 - NJUProbe version and active interface/SSID;
-- current provider and phase;
-- elapsed time;
-- transient M-Lab live rate when available;
-- completed NJU/M-Lab download and upload values;
+- explicit sequential execution order;
+- independent waiting/active/complete/failed/cancelled state for each provider;
+- one animated activity bar for each provider, without a fabricated percentage;
+- per-provider and total elapsed time;
+- transient M-Lab download/upload rates when measurement events are available;
+- completed Campus/M-Lab download and upload values;
+- selected server or a bounded provider-specific error;
 - the Ctrl-C hint.
+
+Campus uses an indeterminate activity bar because LibreSpeed does not expose a
+stable machine-readable live-rate stream. M-Lab uses the same panel and activity
+bar, with transient live rates added as NDT7 measurement events arrive. Either
+provider may fail independently; a Campus failure must not visually subordinate
+M-Lab, and an M-Lab failure must use the same failure treatment as Campus.
 
 On success, failure, or cancellation, restore the cursor and replace the block
 with one durable final table. Tests must verify that raw JSON, ANSI fragments,
