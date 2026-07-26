@@ -38,30 +38,52 @@ func Write(path, format string, summaries []model.RunSummary) error {
 	case "csv":
 		writer := csv.NewWriter(file)
 		header := []string{
-			"run_id", "started_at", "ended_at", "command", "status", "label", "note",
-			"campus_download_mbps", "campus_upload_mbps", "mlab_download_mbps", "mlab_upload_mbps",
+			"run_id", "started_at", "ended_at", "command", "run_status", "label", "note",
+			"target", "method", "measurement_status", "ip_family", "server_name", "server_fqdn",
+			"ping_ms", "jitter_ms", "download_mbps", "upload_mbps", "download_bytes", "upload_bytes",
+			"duration_ms", "concurrency", "helper_version", "failure_stage", "failure_code", "failure_message",
 		}
 		if err := writer.Write(header); err != nil {
 			return fmt.Errorf("write CSV header: %w", err)
 		}
 		for _, summary := range summaries {
-			campusDown, campusUp := measurementSpeeds(summary, model.ProviderCampus)
-			mlabDown, mlabUp := measurementSpeeds(summary, model.ProviderMLab)
-			row := []string{
-				summary.RunID,
-				summary.StartedAt.Format("2006-01-02T15:04:05.999999999Z07:00"),
-				summary.EndedAt.Format("2006-01-02T15:04:05.999999999Z07:00"),
-				string(summary.Command),
-				string(summary.Status),
-				stringValue(summary.Label),
-				stringValue(summary.Note),
-				floatValue(campusDown),
-				floatValue(campusUp),
-				floatValue(mlabDown),
-				floatValue(mlabUp),
-			}
-			if err := writer.Write(row); err != nil {
-				return fmt.Errorf("write CSV row: %w", err)
+			for _, measurement := range summary.Measurements {
+				failureStage, failureCode, failureMessage := "", "", ""
+				if measurement.Failure != nil {
+					failureStage = string(measurement.Failure.Stage)
+					failureCode = measurement.Failure.Code
+					failureMessage = measurement.Failure.Message
+				}
+				row := []string{
+					summary.RunID,
+					summary.StartedAt.Format("2006-01-02T15:04:05.999999999Z07:00"),
+					summary.EndedAt.Format("2006-01-02T15:04:05.999999999Z07:00"),
+					string(summary.Command),
+					string(summary.Status),
+					stringValue(summary.Label),
+					stringValue(summary.Note),
+					string(measurement.Provider),
+					measurement.Method,
+					string(measurement.Status),
+					stringValue(measurement.IPFamily),
+					stringValue(measurement.ServerName),
+					stringValue(measurement.ServerFQDN),
+					floatValue(measurement.PingMS),
+					floatValue(measurement.JitterMS),
+					floatValue(measurement.DownloadMbps),
+					floatValue(measurement.UploadMbps),
+					int64Value(measurement.DownloadBytes),
+					int64Value(measurement.UploadBytes),
+					int64Value(measurement.DurationMS),
+					intValue(measurement.Concurrency),
+					stringValue(measurement.HelperVersion),
+					failureStage,
+					failureCode,
+					failureMessage,
+				}
+				if err := writer.Write(row); err != nil {
+					return fmt.Errorf("write CSV row: %w", err)
+				}
 			}
 		}
 		writer.Flush()
@@ -76,15 +98,6 @@ func Write(path, format string, summaries []model.RunSummary) error {
 	return nil
 }
 
-func measurementSpeeds(summary model.RunSummary, provider model.Provider) (*float64, *float64) {
-	for _, measurement := range summary.Measurements {
-		if measurement.Provider == provider {
-			return measurement.DownloadMbps, measurement.UploadMbps
-		}
-	}
-	return nil, nil
-}
-
 func stringValue(value *string) string {
 	if value == nil {
 		return ""
@@ -97,4 +110,18 @@ func floatValue(value *float64) string {
 		return ""
 	}
 	return strconv.FormatFloat(*value, 'f', -1, 64)
+}
+
+func int64Value(value *int64) string {
+	if value == nil {
+		return ""
+	}
+	return strconv.FormatInt(*value, 10)
+}
+
+func intValue(value *int) string {
+	if value == nil {
+		return ""
+	}
+	return strconv.Itoa(*value)
 }

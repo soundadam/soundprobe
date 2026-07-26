@@ -1,29 +1,64 @@
-# NJUProbe v0.1 implementation specification
+# NJUProbe v0.2 implementation specification
 
 ## 1. Product contract
 
-NJUProbe answers two separate questions:
+NJUProbe measures explicitly selected network targets. A target represents one
+measurement purpose and, where relevant, one address family. Results from
+separate targets must never be silently substituted, ranked, or collapsed into a
+synthetic score.
 
-1. Can this Mac reach the NJU campus measurement service, and what capacity does
-   that path expose?
-2. What single-stream bulk-transport performance does the current public
-   Internet path expose through M-Lab NDT7?
+The maintained targets are:
 
-The results describe different protocols and must be presented side by side,
-not ranked or collapsed into one synthetic score.
+| Station ID | Measurement purpose | Families | Method |
+| --- | --- | --- | --- |
+| `nju-campus` | current path to NJU's campus-internal service | IPv4, IPv6 | LibreSpeed, three concurrent streams |
+| `nju-edge` | public path to NJU's internet-facing edge | IPv4, IPv6 | displayed but terminal execution disabled by browser verification |
+| `mlab` | general Internet bulk-transport performance | automatic | M-Lab NDT7, single stream |
+| `cernet` | CERNET public station | IPv4 | LibreSpeed, three concurrent streams |
+| `qlu` | Qilu University of Technology station | IPv4 | LibreSpeed, three concurrent streams |
+| `tongji` | Tongji University station | IPv4 | LibreSpeed, three concurrent streams |
+
+NJU Campus and NJU Edge answer different questions. NJU Edge remains visible in
+the product model, but its official backend currently redirects terminal clients
+to a browser-verification challenge. NJUProbe must not bypass that protection or
+publish a target that returns null. Edge selection therefore fails before
+measurement with a bounded explanation. IPv4 and IPv6 are independent
+measurements for supported stations; a dual plan expands them into ordered
+targets.
 
 The product is a macOS-first Go CLI. It has no daemon, privileged helper,
 account, cloud synchronization, automatic scheduler, or dependency on
 soundVPN/SFM/NJUConnect.
 
-## 2. Provider behavior
+## 2. Target identities
 
-### 2.1 NJU campus provider
+Stable JSON provider IDs encode station and family:
 
-Keep the two NJU server definitions pinned with the release, validate that the
-selected ID resolves to the expected NJU hostname, and provide the JSON to the
-pinned LibreSpeed CLI helper through `--local-json -`. Then run the helper with
-the equivalent of:
+```text
+nju-campus-ipv4
+nju-campus-ipv6
+nju-edge-ipv4
+nju-edge-ipv6
+mlab
+cernet-ipv4
+qlu-ipv4
+tongji-ipv4
+```
+
+The legacy provider ID `campus` remains valid only so schema-v1 history written
+by NJUProbe 0.1 can still be read. New measurements use explicit IDs.
+
+Every new run summary includes an ordered `targets` array. The number and order
+of measurement objects must match the requested targets. Duplicate targets are
+rejected or deduplicated before execution, not executed twice accidentally.
+
+## 3. LibreSpeed target behavior
+
+Use pinned LibreSpeed CLI v1.0.13. Keep every supported server definition in the
+release and pass one selected definition through `--local-json -`. Do not fetch
+an uncontrolled remote server directory during routine execution.
+
+Run the helper with the equivalent of:
 
 ```text
 --local-json -
@@ -31,67 +66,191 @@ the equivalent of:
 --duration 10
 --concurrent 3
 --no-icmp
+--telemetry-level disabled
 --json
+--ipv4 | --ipv6
 ```
 
-Do not pass `--share` or any telemetry option. The default test includes both
-download and upload. Server ID 1 is the IPv4 default. `campus --ipv6` explicitly
-selects server ID 2 and passes `--ipv6` for the measurement connections.
-Supplying the pinned configuration is not a measurement fallback; the selected
-IPv6 measurement must never silently fall back to IPv4. Routine tests remain
-offline and do not fetch the server list from NJU.
+Do not pass `--share`. Validate the pinned URL scheme and expected hostname
+before execution. Parse exactly one final JSON result and preserve server/client
+metadata, ping, jitter, upload/download rates, byte counts, duration,
+concurrency, and helper version.
 
-Parse the final JSON for server/client metadata, ping, jitter, upload/download
-bit rates, and transferred byte counts. LibreSpeed does not provide a stable
-machine-readable live-rate stream, so the UI shows the provider, elapsed time,
-and an indeterminate running state until the final result. It must not invent a
-live throughput number.
+LibreSpeed does not expose a stable machine-readable live-rate stream in this
+mode. Interactive output therefore uses an indeterminate activity bar and must
+not invent a percentage or live throughput value.
 
-### 2.2 M-Lab provider
+### 3.1 NJU Campus
 
-Run the pinned `ndt7-client` helper with JSON events, TLS verification enabled,
-client name `njuprobe`, and a 55-second whole-test timeout. Use M-Lab's Locate
-service rather than fixing a server. Run both download and upload.
+Pinned endpoints:
+
+```text
+IPv4  http://speed.nju.edu.cn
+IPv6  http://speed6.nju.edu.cn
+```
+
+The service describes the path to NJU's campus-internal measurement servers.
+`campus` defaults to IPv4. `campus --ipv6` runs IPv6 only, with no IPv4
+fallback.
+
+### 3.2 NJU Edge
+
+Published endpoints:
+
+```text
+IPv4  http://test.nju.edu.cn
+IPv6  http://test6.nju.edu.cn
+```
+
+The service represents the path to NJU's public internet-facing edge, but its
+measurement backend is protected by an Anubis browser challenge. Standard
+LibreSpeed CLI receives a redirect and returns no measurement. NJUProbe displays
+NJU Edge as `terminal unsupported`; `edge` and `--targets nju-edge` fail before
+starting a helper. Do not automate or bypass the browser challenge. Enable this
+target only after NJU publishes a terminal-compatible endpoint or explicit
+integration contract.
+
+### 3.3 Domestic stations
+
+Pinned IPv4 endpoints:
+
+```text
+CERNET  http://speedtest.sec.edu.cn
+QLU     https://speed.qlu.edu.cn
+Tongji  https://dev.tongji.edu.cn/speedtest
+```
+
+These are optional independent targets. One station failure must not prevent
+later selected stations from running. The default `domestic` command runs
+CERNET, QLU, then Tongji sequentially.
+
+## 4. M-Lab behavior
+
+Run pinned `ndt7-client` v0.10.1 with JSON events, TLS verification, client name
+`njuprobe`, both download and upload, and a 55-second whole-test timeout. Use
+M-Lab Locate rather than pinning a server.
 
 Consume `starting`, `connected`, `measurement`, `error`, and `complete` events.
-Measurement events may drive an ephemeral live rate in the terminal. Persist
-only the final summary, selected server FQDN, client public IP/connection
-identity available from NDT7, bytes, elapsed time, and final rate.
+Measurement events may drive transient download/upload rates in the interactive
+view. Persist only the durable final summary, selected server, client identity,
+bytes, duration, and final rates.
 
-NDT7 is a single-stream measurement. Store `method = ndt7-single-stream` and do
-not present it as directly equivalent to the three-stream NJU result.
+M-Lab is a peer target, not a fallback or reference score. Its single-stream
+NDT7 result is not directly equivalent to three-stream LibreSpeed results.
 
-### 2.3 Run ordering and result semantics
+## 5. Planning and ordering
 
-Bare `njuprobe` is equivalent to `njuprobe run`:
+All selected targets run sequentially so they never compete for bandwidth. The
+ordered plan is visible before and during execution.
 
-1. capture one best-effort network-context snapshot;
-2. run the NJU provider;
-3. run the M-Lab provider;
-4. atomically save one combined summary unless `--no-save` was supplied;
-5. replace the live view with the final compact table.
+### 5.1 Interactive selector
 
-Providers run sequentially so they never compete for bandwidth.
+Bare `njuprobe` in an interactive terminal performs bounded, lightweight
+reachability probes and opens a Bubble Tea inline selector. Probes may check DNS,
+connection establishment, TLS, and a small backend response; they must not run a
+bandwidth test.
 
-- Successful attempted phase: store its measured value.
-- Attempted but unreachable phase: store `0` and an error stage/code.
-- Intentionally disabled or not run phase: store `null`.
-- One successful provider and one failed provider: run status `partial`.
-- Ctrl-C: stop the active child, do not start the next provider, save status
-  `cancelled`, and return exit code 130.
+Controls:
 
-Speed is the average over the provider's effective measurement window. Live UI
-rates are explicitly transient and are not the saved result.
+```text
+↑/↓ or j/k   move
+Space        toggle station
+4            IPv4
+6            IPv6
+d            dual stack
+a            restore recommendation
+Enter        execute
+q / Esc      cancel
+```
 
-## 3. Terminal and command interface
+The selector shows station description, family support, reachability, and probe
+latency. IPv4-only stations are disabled in IPv6 mode.
 
-### 3.1 Commands
+Recommendation rules:
+
+1. Select M-Lab.
+2. Select NJU Campus when at least one requested family is reachable.
+3. If Campus is not reachable, recommend M-Lab alone.
+4. Display NJU Edge as disabled with its browser-verification explanation.
+5. Domestic stations are available but not preselected.
+
+Recommendations set defaults only. They do not authorize silent fallback during
+measurement.
+
+### 5.2 Noninteractive plans
+
+JSON, redirected, and explicitly scripted commands never open the selector.
+They resolve a deterministic target list from command defaults and flags:
+
+```text
+njuprobe run --targets LIST --family ipv4|ipv6|dual
+njuprobe domestic --targets LIST --family ipv4|dual
+njuprobe campus [--ipv4|--ipv6]
+njuprobe edge [--ipv4|--ipv6]
+njuprobe mlab
+```
+
+`--targets` accepts comma-separated station IDs. Invalid station IDs and
+unsupported family/station combinations fail before any provider is contacted.
+
+## 6. Result semantics
+
+For each requested target:
+
+- success stores measured values;
+- attempted provider failure stores zero or partial measured values and a stable
+  failure object;
+- cancellation stores null speeds and a cancelled failure;
+- targets not started after cancellation are marked skipped with null speeds.
+
+Run status:
+
+- all requested measurements successful: `success`;
+- at least one success and at least one failure: `partial`;
+- no successful measurement: `failed`;
+- operator cancellation: `cancelled`.
+
+Stable exit codes:
+
+```text
+0    all requested measurements succeeded
+1    invalid configuration, missing helper, consent, or internal failure
+2    failed target or partial result
+130  cancelled by the operator
+```
+
+## 7. Terminal interface
+
+Use Bubble Tea v2 in inline mode, never alternate-screen mode. The selector must
+clear before measurement progress begins. During execution redraw one fixed
+block at no more than four frames per second.
+
+Every target receives the same four-row panel:
+
+1. explicit station/family label and phase;
+2. animated activity bar;
+3. download/upload rates;
+4. selected server or bounded failure detail.
+
+Targets have independent waiting, active, complete, failed, cancelled, and
+skipped states. M-Lab may add transient live rates; LibreSpeed targets do not.
+At completion restore the cursor and replace the block with one durable summary
+table using human-readable target labels.
+
+JSON output emits exactly one document. Redirected plain output emits only one
+final summary and provider failures. Neither mode may contain ANSI sequences or
+raw provider events.
+
+## 8. Commands
 
 ```text
 njuprobe
-njuprobe run [--label TEXT] [--note TEXT] [--no-save]
+njuprobe run [--targets LIST] [--family ipv4|ipv6|dual] [--label TEXT] [--note TEXT] [--no-save]
 njuprobe campus [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
+njuprobe edge [--ipv4|--ipv6]  # reports terminal unsupported
+njuprobe domestic [--targets LIST] [--family ipv4|dual] [--label TEXT] [--note TEXT] [--no-save]
 njuprobe mlab [--label TEXT] [--note TEXT] [--no-save]
+njuprobe stations [--json]
 njuprobe history [--limit N]
 njuprobe last [--json]
 njuprobe show RUN_ID [--json]
@@ -101,162 +260,72 @@ njuprobe doctor [--json]
 njuprobe version
 ```
 
-Support global `--json`. When stdout is not a TTY, automatically disable the
-dynamic renderer. JSON mode emits exactly one final JSON document. Plain
-non-TTY mode emits one final summary and errors, never provider event logs.
+## 9. Consent and privacy
 
-Exit codes are stable:
+Before a selected plan containing M-Lab starts, explain that M-Lab collects the
+ISP-provided public IP address and measurement results and publishes/retains
+experiment data indefinitely. Require exact interactive acceptance and store the
+policy version and timestamp locally.
 
-- `0`: all requested measurements completed;
-- `2`: partial result or an unreachable requested provider;
-- `1`: configuration, helper, consent, or internal failure;
-- `130`: cancelled by the operator.
+A plan without M-Lab never requires M-Lab consent. Noninteractive execution
+without current consent fails before contacting M-Lab. LibreSpeed telemetry and
+sharing are always disabled.
 
-### 3.2 Interactive renderer
+NJUProbe has no own analytics, remote result service, geolocation enrichment, or
+ASN lookup.
 
-Use Bubble Tea v2 in inline mode, not alternate-screen mode. Redraw one fixed
-block at no more than four frames per second. Campus and M-Lab are peer
-providers: they use the same status, activity, rate, and detail rows; their only
-ordering distinction is that Campus runs before M-Lab. The view shows:
+## 10. Storage and export
 
-- NJUProbe version and active interface/SSID;
-- explicit sequential execution order;
-- independent waiting/active/complete/failed/cancelled state for each provider;
-- one animated activity bar for each provider, without a fabricated percentage;
-- per-provider and total elapsed time;
-- transient M-Lab download/upload rates when measurement events are available;
-- completed Campus/M-Lab download and upload values;
-- selected server or a bounded provider-specific error;
-- the Ctrl-C hint.
-
-Campus uses an indeterminate activity bar because LibreSpeed does not expose a
-stable machine-readable live-rate stream. M-Lab uses the same panel and activity
-bar, with transient live rates added as NDT7 measurement events arrive. Either
-provider may fail independently; a Campus failure must not visually subordinate
-M-Lab, and an M-Lab failure must use the same failure treatment as Campus.
-
-On success, failure, or cancellation, restore the cursor and replace the block
-with one durable final table. Tests must verify that raw JSON, ANSI fragments,
-and unbounded status lines do not leak.
-
-## 4. Consent and privacy
-
-Before the first M-Lab test, explain that M-Lab collects the ISP-provided public
-IP and measurement results and publishes/retains experiment data indefinitely.
-Require explicit interactive acceptance. Persist:
-
-```json
-{
-  "schemaVersion": 1,
-  "provider": "mlab",
-  "policyVersion": "v5-2026-05-03",
-  "acceptedAt": "RFC3339 timestamp",
-  "toolVersion": "njuprobe version"
-}
-```
-
-`consent revoke` removes only this local acceptance record. If no prior consent
-exists in a noninteractive invocation, fail before contacting M-Lab. The NJU-
-only command never requires M-Lab consent.
-
-NJUProbe has no own analytics or remote result service. Local public IP values
-are not redacted. Do not add IP geolocation, ASN enrichment, or another public-
-IP lookup provider in v0.1.
-
-## 5. Permanent summary storage
-
-Use these macOS paths:
+Store summaries under:
 
 ```text
 ~/Library/Application Support/njuprobe/history/v1/<run-id>.json
-~/Library/Application Support/njuprobe/consent.json
 ```
 
-Create directories as `0700` and files as `0600`. Write to a same-directory
-temporary file, fsync as appropriate, then atomically rename. Never prune
-history automatically. Do not implement a bulk-clear command in v0.1. Export
-is read-only.
+Directories are `0700`; files are `0600`. Use same-directory temporary files,
+fsync, and atomic rename. Never prune history automatically.
 
-Each run file contains:
+Schema version remains 1. Existing 0.1 history without a `targets` field must
+remain readable. New summaries include the ordered target IDs.
 
-- schema version, UUID run ID, tool version;
-- start/end timestamps, command, final status, label, and note;
-- macOS version and architecture;
-- active interface, interface kind, SSID/BSSID when permitted;
-- local IPv4/IPv6 addresses, default gateway, and DNS servers;
-- one measurement object per requested provider;
-- provider/method, server name/FQDN/address, client public IP;
-- ping, jitter, download/upload Mbps, byte counts, test duration, concurrency;
-- provider status and an optional sanitized failure object.
+JSONL export writes one complete summary per line. CSV export writes one row per
+measurement, repeating run metadata. This normalized form preserves arbitrary
+multi-station and dual-stack plans.
 
-The failure object contains a stable stage (`helper`, `dns`, `connect`,
-`download`, `upload`, `timeout`, or `cancelled`), stable code, and sanitized
-message. It must not contain environment dumps or provider raw events.
+## 11. Helper discovery and packaging
 
-SSID/BSSID and other best-effort fields are `null` when macOS permissions or
-hardware do not expose them; their absence must not fail a bandwidth test. A
-provider-reported client public IP is also `null` when that provider omits it;
-a missing client IP must not invalidate otherwise complete measurement data.
+Resolve helpers in this order:
 
-## 6. Helper discovery and packaging
+1. installed `../libexec/njuprobe` relative to the executable;
+2. repository-local `.tools/bin`;
+3. documented developer PATH fallback.
 
-At runtime resolve helpers in this order:
+Verify exact helper versions and include them in results. Production must not
+silently select an arbitrary newer PATH helper when a pinned libexec helper
+exists.
 
-1. paths relative to the installed `njuprobe` executable under
-   `../libexec/njuprobe`;
-2. repository-local `.tools/bin` for development;
-3. PATH fallback for an explicitly documented developer workflow.
+Homebrew Formula tests are offline and may invoke only version, diagnostics, and
+read-only history commands. They must not probe real stations or run bandwidth
+measurements.
 
-Production installation must not silently pick arbitrary newer helpers from
-PATH when the pinned libexec helper exists. Include helper versions in every
-saved run.
+## 12. Verification gates
 
-Provide a reproducible development command that downloads/builds the pinned
-helper source into the ignored `.tools/bin` directory and verifies expected
-versions. Do not commit helper binaries or source copies.
+Automated tests use mock helpers and local HTTP fixtures. They cover:
 
-The owner has approved public distribution through Homebrew. Releases use an
-immutable, checksummed source asset and a Formula that builds NJUProbe plus the
-two pinned helper resources from source. Publication starts in the maintained
-`soundadam/homebrew-tap`; a later `homebrew/core` submission is conditional on a
-public stable release, supported-macOS acceptance, Formula audit results, and
-Homebrew review.
+- explicit station/family expansion and ordering;
+- selector recommendation, family switching, toggling, cancellation, and clear;
+- NJU Campus identity, Edge unsupported handling, and no fallback;
+- domestic station identity and telemetry-disabled helper arguments;
+- M-Lab live event parsing and independent failure;
+- multi-target success, partial, failure, cancellation, and skipped results;
+- schema-v1 legacy history compatibility;
+- normalized CSV and JSONL export;
+- inline terminal rendering, cursor restoration, and no ANSI in redirected/JSON
+  output;
+- atomic storage and `0700`/`0600` modes;
+- deterministic release artifacts and Homebrew template rendering.
 
-Formula tests are offline and may invoke only version, diagnostics, and
-read-only history commands. They must not contact NJU or M-Lab.
-
-## 7. Verification gates
-
-Automated tests use mock helpers and committed sanitized fixtures only:
-
-- parse LibreSpeed final JSON and NDT7 JSON event streams;
-- cover unreachable, timeout, partial, malformed output, helper crash, and
-  cancellation;
-- verify zero versus null semantics and stable exit codes;
-- verify fixed-block UI state transitions and cursor restoration;
-- verify redirected/JSON output contains no ANSI;
-- verify atomic storage, modes `0700`/`0600`, permanent history, and export;
-- verify consent accept/status/revoke and noninteractive fail-closed behavior;
-- verify helper precedence and version capture.
-
-CI must never execute a real bandwidth test. Operator acceptance after a local
-build covers NJU success, NJU unreachable with M-Lab continuing, M-Lab failure,
-Ctrl-C, history readback, and local Homebrew installation. Formula tests invoke
-only `njuprobe version` and other offline/read-only commands.
-
-## 8. Release boundary
-
-Do not tag or claim v0.1.0 readiness until all automated gates, real operator
-acceptance, dependency notices, and local Homebrew installation tests pass on a
-supported macOS machine.
-
-A v0.1.0 release consists of:
-
-1. a public immutable source release asset;
-2. recorded SHA-256 checksums for NJUProbe and both helper sources;
-3. a rendered `njuprobe` Formula in `soundadam/homebrew-tap`;
-4. successful `brew audit`, source installation, `brew test`, and upgrade checks;
-5. documented install, privacy, and rollback instructions.
-
-Inclusion in `homebrew/core` is not part of the v0.1.0 acceptance claim and must
-not be implied before Homebrew review.
+Routine CI must never run a real bandwidth measurement or station probe.
+Operator acceptance validates real NJU Campus, domestic stations, M-Lab
+continuation, Edge unsupported reporting, selector interaction, Homebrew
+installation, and upgrade on a supported macOS host.

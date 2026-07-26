@@ -44,7 +44,7 @@ type libreSpeedClient struct {
 	Timezone string `json:"timezone"`
 }
 
-func parseResult(data []byte, family, helperVersion string, durationMS int64) (model.Measurement, error) {
+func parseResult(data []byte, measurementProvider model.Provider, family, helperVersion string, durationMS int64) (model.Measurement, error) {
 	var reports []libreSpeedReport
 	if err := json.Unmarshal(data, &reports); err != nil {
 		return model.Measurement{}, fmt.Errorf("decode LibreSpeed JSON: %w", err)
@@ -109,7 +109,7 @@ func parseResult(data []byte, family, helperVersion string, durationMS int64) (m
 	concurrency := ConcurrentRequests
 	fqdn := serverURL.Hostname()
 	return model.Measurement{
-		Provider:       model.ProviderCampus,
+		Provider:       measurementProvider,
 		Method:         model.MethodLibreSpeedThreeStream,
 		Status:         model.ProviderStatusSuccess,
 		IPFamily:       model.Pointer(family),

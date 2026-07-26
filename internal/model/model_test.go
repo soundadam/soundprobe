@@ -1,6 +1,9 @@
 package model
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestDeriveRunStatus(t *testing.T) {
 	tests := []struct {
@@ -130,5 +133,78 @@ func TestFailedMeasurementRequiresZeroOrMeasuredSpeeds(t *testing.T) {
 	}
 	if err := summary.Validate(); err == nil {
 		t.Fatal("Validate() succeeded for failed measurement with null speeds")
+	}
+}
+
+func TestRunSummaryAcceptsExplicitMultiTargetPlan(t *testing.T) {
+	now := time.Date(2026, 7, 26, 8, 0, 0, 0, time.UTC)
+	providers := []Provider{ProviderNJUEdgeIPv4, ProviderNJUEdgeIPv6, ProviderMLab}
+	measurements := make([]Measurement, 0, len(providers))
+	for _, measurementProvider := range providers {
+		measurements = append(measurements, Measurement{
+			Provider:     measurementProvider,
+			Method:       ProviderMethod(measurementProvider),
+			Status:       ProviderStatusSuccess,
+			DownloadMbps: Pointer(10.0),
+			UploadMbps:   Pointer(5.0),
+		})
+	}
+	summary := RunSummary{
+		SchemaVersion: SchemaVersion,
+		RunID:         "00000000-0000-4000-8000-000000000099",
+		ToolVersion:   "test",
+		StartedAt:     now,
+		EndedAt:       now.Add(time.Second),
+		Command:       CommandRun,
+		Targets:       providers,
+		Status:        RunStatusSuccess,
+		Measurements:  measurements,
+	}
+	if err := summary.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunSummaryStillAcceptsLegacyCampusHistory(t *testing.T) {
+	now := testTime()
+	summary := RunSummary{
+		SchemaVersion: SchemaVersion,
+		RunID:         "legacy-campus-run",
+		ToolVersion:   "0.1.3",
+		StartedAt:     now,
+		EndedAt:       now.Add(time.Second),
+		Command:       CommandCampus,
+		Status:        RunStatusSuccess,
+		Measurements: []Measurement{{
+			Provider:     ProviderCampus,
+			Method:       MethodLibreSpeedThreeStream,
+			Status:       ProviderStatusSuccess,
+			DownloadMbps: Pointer(100.0),
+			UploadMbps:   Pointer(50.0),
+		}},
+	}
+	if err := summary.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunSummaryRejectsMeasurementOrderMismatch(t *testing.T) {
+	now := testTime()
+	summary := RunSummary{
+		SchemaVersion: SchemaVersion,
+		RunID:         "ordered-targets",
+		ToolVersion:   "test",
+		StartedAt:     now,
+		EndedAt:       now.Add(time.Second),
+		Command:       CommandRun,
+		Targets:       []Provider{ProviderNJUEdgeIPv4, ProviderMLab},
+		Status:        RunStatusSuccess,
+		Measurements: []Measurement{
+			{Provider: ProviderMLab, Method: MethodNDT7SingleStream, Status: ProviderStatusSuccess, DownloadMbps: Pointer(1.0), UploadMbps: Pointer(1.0)},
+			{Provider: ProviderNJUEdgeIPv4, Method: MethodLibreSpeedThreeStream, Status: ProviderStatusSuccess, DownloadMbps: Pointer(1.0), UploadMbps: Pointer(1.0)},
+		},
+	}
+	if err := summary.Validate(); err == nil {
+		t.Fatal("Validate() accepted measurements in a different order from targets")
 	}
 }

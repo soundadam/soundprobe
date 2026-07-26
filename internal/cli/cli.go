@@ -17,16 +17,20 @@ import (
 	"github.com/soundadam/njuprobe/internal/model"
 	"github.com/soundadam/njuprobe/internal/provider"
 	"github.com/soundadam/njuprobe/internal/storage"
+	"github.com/soundadam/njuprobe/internal/target"
 	"github.com/soundadam/njuprobe/internal/ui"
 )
 
-const usage = `NJUProbe compares the NJU campus path with M-Lab NDT7.
+const usage = `NJUProbe measures selected NJU, M-Lab, and domestic network paths.
 
 Usage:
-  njuprobe [--json]
-  njuprobe run [--label TEXT] [--note TEXT] [--no-save]
+  njuprobe
+  njuprobe run [--targets LIST] [--family ipv4|ipv6|dual] [--label TEXT] [--note TEXT] [--no-save]
   njuprobe campus [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
+  njuprobe edge [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
+  njuprobe domestic [--targets LIST] [--family ipv4|dual] [--label TEXT] [--note TEXT] [--no-save]
   njuprobe mlab [--label TEXT] [--note TEXT] [--no-save]
+  njuprobe stations [--json]
   njuprobe history [--limit N]
   njuprobe last [--json]
   njuprobe show RUN_ID [--json]
@@ -52,15 +56,18 @@ type App struct {
 	History         *storage.Store
 	Consent         *consent.Store
 	Now             func() time.Time
-	ProgressFactory func(io.Writer, string, model.Command) (progressRenderer, error)
+	ProgressFactory func(io.Writer, string, []model.Provider) (progressRenderer, error)
+	SelectorFactory func(context.Context, io.Reader, io.Writer, string) (target.Plan, error)
 }
 
 type commandOptions struct {
-	label  string
-	note   string
-	noSave bool
-	ipv4   bool
-	ipv6   bool
+	label   string
+	note    string
+	targets string
+	family  string
+	noSave  bool
+	ipv4    bool
+	ipv6    bool
 }
 
 func (app *App) Execute(ctx context.Context, args []string) int {
@@ -68,6 +75,16 @@ func (app *App) Execute(ctx context.Context, args []string) int {
 	args, jsonMode := extractGlobalJSON(args)
 
 	if len(args) == 0 {
+		if app.StdinTTY && app.StdoutTTY && !jsonMode {
+			plan, err := app.SelectorFactory(ctx, app.In, app.Out, app.Version)
+			if err != nil {
+				if errors.Is(err, ui.ErrSelectionCancelled) {
+					return 130
+				}
+				return app.fail(false, "selector_error", err.Error(), 1)
+			}
+			return app.executeMeasurementPlan(ctx, model.CommandRun, commandOptions{}, plan, false)
+		}
 		return app.executeMeasurement(ctx, model.CommandRun, nil, jsonMode)
 	}
 
@@ -86,8 +103,14 @@ func (app *App) Execute(ctx context.Context, args []string) int {
 		return app.executeMeasurement(ctx, model.CommandRun, rest, jsonMode)
 	case "campus":
 		return app.executeMeasurement(ctx, model.CommandCampus, rest, jsonMode)
+	case "edge":
+		return app.executeMeasurement(ctx, model.CommandEdge, rest, jsonMode)
+	case "domestic":
+		return app.executeMeasurement(ctx, model.CommandDomestic, rest, jsonMode)
 	case "mlab":
 		return app.executeMeasurement(ctx, model.CommandMLab, rest, jsonMode)
+	case "stations":
+		return app.executeStations(ctx, rest, jsonMode)
 	case "history":
 		return app.executeHistory(rest, jsonMode)
 	case "last":
@@ -122,9 +145,12 @@ func (app *App) setDefaults() {
 		app.Now = time.Now
 	}
 	if app.ProgressFactory == nil {
-		app.ProgressFactory = func(output io.Writer, version string, command model.Command) (progressRenderer, error) {
-			return ui.NewProgressRenderer(output, version, command)
+		app.ProgressFactory = func(output io.Writer, version string, providers []model.Provider) (progressRenderer, error) {
+			return ui.NewProgressRenderer(output, version, providers)
 		}
+	}
+	if app.SelectorFactory == nil {
+		app.SelectorFactory = ui.SelectPlan
 	}
 }
 
@@ -146,43 +172,43 @@ func (app *App) executeMeasurement(ctx context.Context, command model.Command, a
 	if err != nil {
 		return app.fail(jsonMode, "invalid_arguments", err.Error(), 1)
 	}
+	plan, err := resolvePlan(command, options)
+	if err != nil {
+		return app.fail(jsonMode, "invalid_arguments", err.Error(), 1)
+	}
+	return app.executeMeasurementPlan(ctx, command, options, plan, jsonMode)
+}
 
+func (app *App) executeMeasurementPlan(ctx context.Context, command model.Command, options commandOptions, plan target.Plan, jsonMode bool) int {
 	if app.Runner == nil {
 		return app.fail(jsonMode, "internal_error", "measurement runner is not configured", 1)
 	}
-
 	request := provider.Request{
 		Command: command,
+		Targets: append([]model.Provider(nil), plan.Providers...),
 		Label:   optionalString(options.label),
 		Note:    optionalString(options.note),
 	}
-	if options.ipv4 {
-		request.IPFamily = "ipv4"
-	}
-	if options.ipv6 {
-		request.IPFamily = "ipv6"
-	}
-
 	if preflight, ok := app.Runner.(provider.PreflightRunner); ok {
 		if err := preflight.Preflight(ctx, request); err != nil {
 			return app.fail(jsonMode, measurementErrorCode(err), err.Error(), 1)
 		}
 	}
-	if command == model.CommandRun || command == model.CommandMLab {
+	if target.NeedsMLab(plan.Providers) {
 		if exitCode := app.ensureMLabConsent(jsonMode); exitCode != 0 {
 			return exitCode
 		}
 	}
 
 	var progress progressRenderer
+	var err error
 	if app.StdoutTTY && !jsonMode {
-		progress, err = app.ProgressFactory(app.Out, app.Version, command)
+		progress, err = app.ProgressFactory(app.Out, app.Version, plan.Providers)
 		if err != nil {
 			return app.fail(false, "renderer_error", fmt.Sprintf("start interactive renderer: %v", err), 1)
 		}
 		request.Progress = progress.Update
 	}
-
 	closeProgress := func() error {
 		if progress == nil {
 			return nil
@@ -206,6 +232,9 @@ func (app *App) executeMeasurement(ctx context.Context, command model.Command, a
 	if summary.Command == "" {
 		summary.Command = command
 	}
+	if len(summary.Targets) == 0 {
+		summary.Targets = append([]model.Provider(nil), plan.Providers...)
+	}
 	if summary.Status == "" {
 		summary.Status = model.DeriveRunStatus(summary.Measurements)
 	}
@@ -223,7 +252,6 @@ func (app *App) executeMeasurement(ctx context.Context, command model.Command, a
 	if err := closeProgress(); err != nil {
 		return app.fail(jsonMode, "renderer_error", err.Error(), 1)
 	}
-
 	if jsonMode {
 		if err := json.NewEncoder(app.Out).Encode(summary); err != nil {
 			return 1
@@ -235,7 +263,7 @@ func (app *App) executeMeasurement(ctx context.Context, command model.Command, a
 }
 
 func (app *App) parseMeasurementFlags(command model.Command, args []string, jsonMode bool) (commandOptions, error) {
-	var options commandOptions
+	options := commandOptions{family: string(target.FamilyIPv4)}
 	flags := flag.NewFlagSet(string(command), flag.ContinueOnError)
 	if jsonMode {
 		flags.SetOutput(io.Discard)
@@ -245,9 +273,13 @@ func (app *App) parseMeasurementFlags(command model.Command, args []string, json
 	flags.StringVar(&options.label, "label", "", "optional run label")
 	flags.StringVar(&options.note, "note", "", "optional run note")
 	flags.BoolVar(&options.noSave, "no-save", false, "do not persist the result")
-	if command == model.CommandCampus {
-		flags.BoolVar(&options.ipv4, "ipv4", false, "use the IPv4 campus service")
-		flags.BoolVar(&options.ipv6, "ipv6", false, "use the IPv6 campus service")
+	if command == model.CommandRun || command == model.CommandDomestic {
+		flags.StringVar(&options.targets, "targets", "", "comma-separated target IDs")
+		flags.StringVar(&options.family, "family", string(target.FamilyIPv4), "ipv4, ipv6, or dual")
+	}
+	if command == model.CommandCampus || command == model.CommandEdge {
+		flags.BoolVar(&options.ipv4, "ipv4", false, "use the IPv4 service")
+		flags.BoolVar(&options.ipv6, "ipv6", false, "use the IPv6 service")
 	}
 	if err := flags.Parse(args); err != nil {
 		return commandOptions{}, err
@@ -258,7 +290,89 @@ func (app *App) parseMeasurementFlags(command model.Command, args []string, json
 	if options.ipv4 && options.ipv6 {
 		return commandOptions{}, errors.New("--ipv4 and --ipv6 are mutually exclusive")
 	}
+	if options.ipv6 {
+		options.family = string(target.FamilyIPv6)
+	} else if options.ipv4 {
+		options.family = string(target.FamilyIPv4)
+	}
+	family := target.Family(options.family)
+	if family != target.FamilyIPv4 && family != target.FamilyIPv6 && family != target.FamilyDual {
+		return commandOptions{}, fmt.Errorf("--family must be ipv4, ipv6, or dual")
+	}
 	return options, nil
+}
+
+func resolvePlan(command model.Command, options commandOptions) (target.Plan, error) {
+	family := target.Family(options.family)
+	ids := []string{}
+	switch command {
+	case model.CommandRun:
+		ids = []string{"nju-campus", "mlab"}
+	case model.CommandCampus:
+		ids = []string{"nju-campus"}
+	case model.CommandEdge:
+		ids = []string{"nju-edge"}
+	case model.CommandDomestic:
+		ids = []string{"cernet", "qlu", "tongji"}
+	case model.CommandMLab:
+		ids = []string{"mlab"}
+	default:
+		return target.Plan{}, fmt.Errorf("unsupported measurement command %q", command)
+	}
+	if strings.TrimSpace(options.targets) != "" {
+		ids = splitCommaList(options.targets)
+	}
+	if command == model.CommandDomestic {
+		if family == target.FamilyIPv6 {
+			return target.Plan{}, errors.New("domestic stations currently support IPv4 only")
+		}
+		allowed := map[string]struct{}{"cernet": {}, "qlu": {}, "tongji": {}}
+		for _, id := range ids {
+			if _, ok := allowed[id]; !ok {
+				return target.Plan{}, fmt.Errorf("target %q is not a domestic station", id)
+			}
+		}
+	}
+	return target.NewPlan(ids, family)
+}
+
+func splitCommaList(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
+}
+
+func (app *App) executeStations(ctx context.Context, args []string, jsonMode bool) int {
+	if len(args) != 0 {
+		return app.fail(jsonMode, "invalid_arguments", "stations does not accept arguments", 1)
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	results := target.ProbeAll(probeCtx, 1500*time.Millisecond)
+	cancel()
+	if jsonMode {
+		if err := json.NewEncoder(app.Out).Encode(results); err != nil {
+			return 1
+		}
+		return 0
+	}
+	writer := tabwriter.NewWriter(app.Out, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(writer, "STATION\tFAMILY\tSTATUS\tLATENCY\tDETAIL")
+	for _, result := range results {
+		latency := "—"
+		if result.LatencyMS != nil {
+			latency = fmt.Sprintf("%.0f ms", *result.LatencyMS)
+		}
+		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\n",
+			result.StationID, result.Family, result.Status, latency, result.Message)
+	}
+	_ = writer.Flush()
+	return 0
 }
 
 func (app *App) executeHistory(args []string, jsonMode bool) int {
@@ -531,10 +645,10 @@ func (app *App) renderSummary(summary model.RunSummary) {
 		fmt.Fprintf(app.Out, "Network %s\n", network)
 	}
 	writer := tabwriter.NewWriter(app.Out, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(writer, "PROVIDER\tMETHOD\tDOWNLOAD\tUPLOAD\tSERVER\tSTATUS")
+	fmt.Fprintln(writer, "TARGET\tMETHOD\tDOWNLOAD\tUPLOAD\tSERVER\tSTATUS")
 	for _, measurement := range summary.Measurements {
 		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\t%s\n",
-			measurement.Provider,
+			target.Label(measurement.Provider),
 			measurement.Method,
 			formatMbps(measurement.DownloadMbps),
 			formatMbps(measurement.UploadMbps),

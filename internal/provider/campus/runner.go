@@ -56,8 +56,17 @@ type HelperResolver interface {
 	Resolve(string) (helper.Resolved, error)
 }
 
+type Config struct {
+	Provider   model.Provider
+	Label      string
+	Family     string
+	ServerName string
+	ServerURL  string
+}
+
 type Runner struct {
 	Resolver       HelperResolver
+	Config         Config
 	Timeout        time.Duration
 	VersionTimeout time.Duration
 	Now            func() time.Time
@@ -71,13 +80,26 @@ type preparedHelper struct {
 	version  string
 }
 
+type selectedTarget struct {
+	provider     model.Provider
+	label        string
+	family       string
+	serverID     string
+	expectedHost string
+	serverList   []byte
+}
+
 func New(resolver HelperResolver) *Runner {
 	return &Runner{Resolver: resolver}
 }
 
+func NewTarget(resolver HelperResolver, config Config) *Runner {
+	return &Runner{Resolver: resolver, Config: config}
+}
+
 func (runner *Runner) Preflight(ctx context.Context, request provider.Request) error {
 	runner.setDefaults()
-	if _, _, _, err := selectedServer(request.IPFamily); err != nil {
+	if _, err := runner.selectedTarget(request); err != nil {
 		return err
 	}
 	_, _, err := runner.prepareHelper(ctx)
@@ -86,43 +108,43 @@ func (runner *Runner) Preflight(ctx context.Context, request provider.Request) e
 
 func (runner *Runner) Measure(ctx context.Context, request provider.Request) (model.Measurement, error) {
 	runner.setDefaults()
-	family, serverID, expectedHost, err := selectedServer(request.IPFamily)
+	target, err := runner.selectedTarget(request)
 	if err != nil {
 		return model.Measurement{}, err
 	}
 	resolved, helperVersion, err := runner.prepareHelper(ctx)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			return cancelledMeasurement(family, "", 0), nil
+			return cancelledMeasurement(target.provider, target.label, target.family, "", 0), nil
 		}
 		return model.Measurement{}, err
 	}
 	request.Report(provider.ProgressEvent{
-		Provider: model.ProviderCampus,
+		Provider: target.provider,
 		Phase:    provider.ProgressMeasuring,
-		Server:   expectedHost,
+		Server:   target.expectedHost,
 	})
 
 	measurementCtx, cancel := context.WithTimeout(ctx, runner.Timeout)
 	defer cancel()
 	startedAt := runner.Now()
-	serverList := []byte(pinnedServerListJSON)
-	if err := validateServerList(serverList, serverID, expectedHost); err != nil {
-		return model.Measurement{}, fmt.Errorf("validate pinned NJU server list: %w", err)
+	if err := validateServerList(target.serverList, target.serverID, target.expectedHost); err != nil {
+		return model.Measurement{}, fmt.Errorf("validate pinned LibreSpeed target %s: %w", target.label, err)
 	}
 	args := []string{
 		"--local-json", "-",
-		"--server", serverID,
+		"--server", target.serverID,
 		"--duration", fmt.Sprintf("%d", MeasurementDuration),
 		"--concurrent", fmt.Sprintf("%d", ConcurrentRequests),
 		"--no-icmp",
+		"--telemetry-level", "disabled",
 		"--json",
-		"--" + family,
+		"--" + target.family,
 	}
 	command := exec.CommandContext(measurementCtx, resolved.Path, args...)
 	stdout := newCappedBuffer(128 * 1024)
 	stderr := newCappedBuffer(16 * 1024)
-	command.Stdin = bytes.NewReader(serverList)
+	command.Stdin = bytes.NewReader(target.serverList)
 	command.Stdout = stdout
 	command.Stderr = stderr
 	err = command.Run()
@@ -133,10 +155,10 @@ func (runner *Runner) Measure(ctx context.Context, request provider.Request) (mo
 
 	if err != nil {
 		if errors.Is(measurementCtx.Err(), context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
-			return cancelledMeasurement(family, helperVersion, durationMS), nil
+			return cancelledMeasurement(target.provider, target.label, target.family, helperVersion, durationMS), nil
 		}
 		if errors.Is(measurementCtx.Err(), context.DeadlineExceeded) {
-			return failedMeasurement(family, helperVersion, durationMS, model.FailureStageTimeout, "timeout", "campus measurement timed out"), nil
+			return failedMeasurement(target.provider, target.label, target.family, helperVersion, durationMS, model.FailureStageTimeout, "timeout", target.label+" measurement timed out"), nil
 		}
 		stage, code := classifyFailure(stderr.String())
 		message := sanitizeMessage(stderr.String())
@@ -146,20 +168,66 @@ func (runner *Runner) Measure(ctx context.Context, request provider.Request) (mo
 		if stage == model.FailureStageHelper {
 			return model.Measurement{}, fmt.Errorf("LibreSpeed helper failed: %s", message)
 		}
-		return failedMeasurement(family, helperVersion, durationMS, stage, code, message), nil
+		return failedMeasurement(target.provider, target.label, target.family, helperVersion, durationMS, stage, code, message), nil
 	}
 
-	measurement, err := parseResult(stdout.Bytes(), family, helperVersion, durationMS)
+	measurement, err := parseResult(stdout.Bytes(), target.provider, target.family, helperVersion, durationMS)
 	if errors.Is(err, errNoResult) {
-		return failedMeasurement(family, helperVersion, durationMS, model.FailureStageConnect, "server_unreachable", "NJU campus server did not produce a measurement"), nil
+		return failedMeasurement(target.provider, target.label, target.family, helperVersion, durationMS, model.FailureStageConnect, "server_unreachable", target.label+" server did not produce a measurement"), nil
 	}
 	if err != nil {
 		return model.Measurement{}, fmt.Errorf("parse LibreSpeed helper output: %w", err)
 	}
-	if measurement.ServerFQDN == nil || !strings.EqualFold(*measurement.ServerFQDN, expectedHost) {
-		return model.Measurement{}, errors.New("LibreSpeed helper returned an unexpected campus server")
+	if measurement.ServerFQDN == nil || !strings.EqualFold(*measurement.ServerFQDN, target.expectedHost) {
+		return model.Measurement{}, fmt.Errorf("LibreSpeed helper returned an unexpected server for %s", target.label)
 	}
 	return measurement, nil
+}
+
+func (runner *Runner) selectedTarget(request provider.Request) (selectedTarget, error) {
+	if runner.Config.Provider != "" {
+		config := runner.Config
+		if !model.ProviderValid(config.Provider) || model.ProviderMethod(config.Provider) != model.MethodLibreSpeedThreeStream {
+			return selectedTarget{}, fmt.Errorf("invalid LibreSpeed provider %q", config.Provider)
+		}
+		if config.Family != "ipv4" && config.Family != "ipv6" {
+			return selectedTarget{}, fmt.Errorf("invalid LibreSpeed family %q", config.Family)
+		}
+		serverURL, err := url.Parse(config.ServerURL)
+		if err != nil || serverURL.Hostname() == "" {
+			return selectedTarget{}, fmt.Errorf("invalid LibreSpeed server URL %q", config.ServerURL)
+		}
+		label := config.Label
+		if label == "" {
+			label = string(config.Provider)
+		}
+		serverName := config.ServerName
+		if serverName == "" {
+			serverName = label
+		}
+		serverList, err := json.Marshal([]map[string]any{{
+			"id": 1, "name": serverName, "server": strings.TrimRight(config.ServerURL, "/"),
+			"dlURL": "/backend/garbage.php", "ulURL": "/backend/empty.php",
+			"pingURL": "/backend/empty.php", "getIpURL": "/backend/getIP.php",
+		}})
+		if err != nil {
+			return selectedTarget{}, fmt.Errorf("encode pinned LibreSpeed target: %w", err)
+		}
+		return selectedTarget{
+			provider: config.Provider, label: label, family: config.Family,
+			serverID: "1", expectedHost: serverURL.Hostname(), serverList: serverList,
+		}, nil
+	}
+
+	family, serverID, expectedHost, err := selectedServer(request.IPFamily)
+	if err != nil {
+		return selectedTarget{}, err
+	}
+	return selectedTarget{
+		provider: model.ProviderCampus, label: "NJU Campus · " + strings.ToUpper(family),
+		family: family, serverID: serverID, expectedHost: expectedHost,
+		serverList: []byte(pinnedServerListJSON),
+	}, nil
 }
 
 func (runner *Runner) prepareHelper(ctx context.Context) (helper.Resolved, string, error) {
@@ -284,40 +352,34 @@ func selectedServer(requestedFamily string) (family, serverID, expectedHost stri
 	}
 }
 
-func failedMeasurement(family, version string, durationMS int64, stage model.FailureStage, code, message string) model.Measurement {
+func failedMeasurement(measurementProvider model.Provider, label, family, version string, durationMS int64, stage model.FailureStage, code, message string) model.Measurement {
 	zero := 0.0
 	return model.Measurement{
-		Provider:      model.ProviderCampus,
+		Provider:      measurementProvider,
 		Method:        model.MethodLibreSpeedThreeStream,
 		Status:        model.ProviderStatusFailed,
 		IPFamily:      model.Pointer(family),
+		ServerName:    model.Pointer(label),
 		DownloadMbps:  model.Pointer(zero),
 		UploadMbps:    model.Pointer(zero),
 		DurationMS:    model.Pointer(durationMS),
 		Concurrency:   model.Pointer(ConcurrentRequests),
 		HelperVersion: optionalVersion(version),
-		Failure: &model.Failure{
-			Stage:   stage,
-			Code:    code,
-			Message: message,
-		},
+		Failure:       &model.Failure{Stage: stage, Code: code, Message: message},
 	}
 }
 
-func cancelledMeasurement(family, version string, durationMS int64) model.Measurement {
+func cancelledMeasurement(measurementProvider model.Provider, label, family, version string, durationMS int64) model.Measurement {
 	return model.Measurement{
-		Provider:      model.ProviderCampus,
+		Provider:      measurementProvider,
 		Method:        model.MethodLibreSpeedThreeStream,
 		Status:        model.ProviderStatusCancelled,
 		IPFamily:      model.Pointer(family),
+		ServerName:    model.Pointer(label),
 		DurationMS:    model.Pointer(durationMS),
 		Concurrency:   model.Pointer(ConcurrentRequests),
 		HelperVersion: optionalVersion(version),
-		Failure: &model.Failure{
-			Stage:   model.FailureStageCancelled,
-			Code:    "cancelled",
-			Message: "campus measurement was cancelled",
-		},
+		Failure:       &model.Failure{Stage: model.FailureStageCancelled, Code: "cancelled", Message: label + " measurement was cancelled"},
 	}
 }
 
