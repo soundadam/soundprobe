@@ -1,5 +1,108 @@
 # NJUProbe
 
+> Measure each network path for what it is. Do not hide different targets,
+> address families, or failure modes behind one synthetic speed score.
+
+## Design principles
+
+NJUProbe separates **measurement intent** from the concrete server used to
+perform the test:
+
+```text
+measurement purpose
+        │
+        ▼
+ordered target plan
+        │
+        ├── NJU Campus · IPv4
+        ├── NJU Campus · IPv6
+        ├── M-Lab · automatic node
+        └── Domestic station · IPv4
+        │
+        ▼
+sequential measurements
+        │
+        ▼
+one durable, machine-readable summary
+```
+
+The product follows several rules:
+
+- **Purpose before server.** People select a measurement purpose; NJUProbe
+  maps it to a pinned, reviewed target definition.
+- **Explicit identity.** Station and address family remain visible in target
+  IDs such as `nju-campus-ipv6` and `tongji-ipv4`.
+- **Sequential execution.** Targets never compete with each other for the same
+  bandwidth during one run.
+- **Independent outcomes.** A failed target does not erase a successful one or
+  prevent the next selected target from running.
+- **Honest progress.** The UI shows an indeterminate activity bar when a helper
+  cannot report real progress; it does not fabricate percentages.
+- **No silent fallback.** IPv6 never becomes IPv4, one station never impersonates
+  another, and browser protection is never bypassed.
+- **Human and machine interfaces share one model.** The interactive selector
+  and `--targets`/`--family` batch flags produce the same ordered plan.
+
+## Terminal preview
+
+The bare command first probes station availability and opens a multi-select
+plan editor:
+
+```text
+$ njuprobe
+NJUProbe 0.2.0 · select measurement targets
+Address family  ipv4   [4] IPv4  [6] IPv6  [d] dual
+
+› [ ] NJU Campus   NJU campus-internal path
+      ipv4 unreachable 6ms
+  [-] NJU Edge     public path to NJU's internet-facing edge
+      terminal unsupported · browser verification blocks the official backend
+  [x] M-Lab        general Internet NDT7 measurement
+      automatic node
+  [ ] CERNET       CERNET public LibreSpeed station
+      ipv4 reachable 30ms
+  [ ] QLU          Qilu University of Technology LibreSpeed station
+      ipv4 reachable 55ms
+  [ ] Tongji       Tongji University LibreSpeed station
+      ipv4 reachable 8ms
+
+↑/↓ move   Space toggle   a recommended   Enter start   q cancel
+```
+
+Selected targets then receive equal, fixed-height progress panels. The example
+below shows one failed Campus target while M-Lab continues independently:
+
+```text
+NJUProbe 0.2.0
+Network   utun6 · tunnel
+Order     NJU Campus · IPv4 → M-Lab · sequential
+
+NJU Campus · IPv4    × failed · 00:00
+          Activity  [────────────────────────]
+          Rate      ↓ 0.00 Mbps · ↑ 0.00 Mbps
+          Detail    error: server did not produce a measurement
+
+M-Lab                ◐ uploading · 00:21
+          Activity  [░░░░░░░░░░█████░░░░░░░░]
+          Rate      ↓ 33.67 Mbps · ↑ 4.75 Mbps
+          Detail    server ndt-mlab3-hkg03.mlab-oti.measurement-lab.org
+
+Elapsed   00:21
+Ctrl-C    cancel
+```
+
+When the run ends, the dynamic block is replaced by one durable summary:
+
+```text
+NJUProbe 0.2.0 · partial · 29.7s
+Run 7e98fa57-f4c8-4883-959f-4d5c5e58916d
+Network utun6 · tunnel
+TARGET             METHOD                   DOWNLOAD    UPLOAD     SERVER       STATUS
+NJU Campus · IPv4  librespeed-three-stream  0.00 Mbps   0.00 Mbps  —            failed
+M-Lab              ndt7-single-stream       33.67 Mbps  4.75 Mbps  ndt-mlab3…   success
+NJU Campus · IPv4 error [connect/server_unreachable]: server did not produce a measurement
+```
+
 NJUProbe is a macOS-first, terminal-first network measurement tool. It measures
 explicit, independent targets sequentially so they do not compete for bandwidth:
 
