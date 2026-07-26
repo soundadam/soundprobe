@@ -4,7 +4,7 @@ NJUProbe is a macOS-first, terminal-first network measurement tool. It measures
 explicit, independent targets sequentially so they do not compete for bandwidth:
 
 - **NJU Campus** — the path to NJU's campus-internal LibreSpeed service;
-- **NJU Edge** — the public path to NJU's internet-facing LibreSpeed service;
+- **NJU Edge** — shown as a distinct public-path purpose, but currently disabled in terminal mode because the official backend requires browser verification;
 - **M-Lab** — a general Internet NDT7 measurement with automatic server selection;
 - **Domestic stations** — pinned CERNET, QLU, and Tongji LibreSpeed services.
 
@@ -51,13 +51,14 @@ q / Esc      cancel
 The recommendation is deliberately conservative:
 
 - select NJU Campus when the requested family is reachable;
-- otherwise select NJU Edge when it is reachable;
 - always select M-Lab when consent is available;
-- when neither NJU path is reachable, recommend M-Lab alone.
+- when Campus is unreachable, recommend M-Lab alone;
+- show NJU Edge as disabled until NJU provides an official terminal-compatible backend.
 
 The selector displays station, address-family support, reachability, and probe
-latency. IPv4-only stations are disabled in IPv6 mode. Selecting `dual` expands
-a dual-stack station into two independent measurements, one for each family.
+latency. IPv4-only stations are disabled in IPv6 mode. Browser-protected
+stations are displayed but disabled with an explanation. Selecting `dual`
+expands a supported dual-stack station into two independent measurements.
 
 During execution every target has the same four-row panel: status, animated
 activity, download/upload rates, and server or failure detail. LibreSpeed targets
@@ -71,7 +72,6 @@ Noninteractive and JSON commands never open the selector:
 
 ```sh
 njuprobe run --targets nju-campus,mlab --family ipv4 --no-save --json
-njuprobe run --targets nju-edge --family dual --no-save --json
 njuprobe domestic --targets cernet,qlu,tongji --family ipv4 --no-save --json
 ```
 
@@ -79,7 +79,7 @@ Supported station IDs:
 
 ```text
 nju-campus   NJU campus-internal service, IPv4 and IPv6
-nju-edge     NJU public edge service, IPv4 and IPv6
+nju-edge     NJU public edge purpose; terminal measurement currently unavailable
 mlab         M-Lab NDT7, automatic address family and server
 cernet       CERNET LibreSpeed, IPv4
 qlu          Qilu University of Technology LibreSpeed, IPv4
@@ -91,8 +91,7 @@ Compatibility commands remain available:
 ```text
 njuprobe campus                  NJU Campus IPv4
 njuprobe campus --ipv6           NJU Campus IPv6 only
-njuprobe edge                    NJU Edge IPv4
-njuprobe edge --ipv6             NJU Edge IPv6 only
+njuprobe edge                    Explain that NJU Edge is browser-protected and unavailable in terminal mode
 njuprobe mlab                    M-Lab only
 njuprobe domestic                CERNET, QLU, then Tongji over IPv4
 njuprobe stations                Probe and list station availability
@@ -105,7 +104,7 @@ contains ANSI progress sequences.
 
 Each summary records the ordered `targets` list and one measurement object per
 target. Provider IDs include station and family, such as
-`nju-edge-ipv6` or `qlu-ipv4`. This makes IPv4 and IPv6 visible rather than
+`nju-campus-ipv6` or `qlu-ipv4`. This makes IPv4 and IPv6 visible rather than
 hiding them behind a generic Campus label.
 
 ```sh

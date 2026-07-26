@@ -23,12 +23,14 @@ const (
 )
 
 type Station struct {
-	ID          string
-	Label       string
-	Description string
-	IPv4        *Spec
-	IPv6        *Spec
-	MLab        bool
+	ID                string
+	Label             string
+	Description       string
+	IPv4              *Spec
+	IPv6              *Spec
+	MLab              bool
+	TerminalSupported bool
+	UnsupportedReason string
 }
 
 type Spec struct {
@@ -75,42 +77,49 @@ func NewPlan(stationIDs []string, family Family) (Plan, error) {
 
 var stations = []Station{
 	{
-		ID:          "nju-campus",
-		Label:       "NJU Campus",
-		Description: "NJU campus-internal path",
-		IPv4:        &Spec{Provider: model.ProviderNJUCampusIPv4, StationID: "nju-campus", Label: "NJU Campus · IPv4", Family: "ipv4", ServerName: "NJU Campus IPv4", ServerURL: "http://speed.nju.edu.cn"},
-		IPv6:        &Spec{Provider: model.ProviderNJUCampusIPv6, StationID: "nju-campus", Label: "NJU Campus · IPv6", Family: "ipv6", ServerName: "NJU Campus IPv6", ServerURL: "http://speed6.nju.edu.cn"},
+		ID:                "nju-campus",
+		Label:             "NJU Campus",
+		Description:       "NJU campus-internal path",
+		IPv4:              &Spec{Provider: model.ProviderNJUCampusIPv4, StationID: "nju-campus", Label: "NJU Campus · IPv4", Family: "ipv4", ServerName: "NJU Campus IPv4", ServerURL: "http://speed.nju.edu.cn"},
+		IPv6:              &Spec{Provider: model.ProviderNJUCampusIPv6, StationID: "nju-campus", Label: "NJU Campus · IPv6", Family: "ipv6", ServerName: "NJU Campus IPv6", ServerURL: "http://speed6.nju.edu.cn"},
+		TerminalSupported: true,
 	},
 	{
-		ID:          "nju-edge",
-		Label:       "NJU Edge",
-		Description: "public path to NJU's internet-facing edge",
-		IPv4:        &Spec{Provider: model.ProviderNJUEdgeIPv4, StationID: "nju-edge", Label: "NJU Edge · IPv4", Family: "ipv4", ServerName: "NJU Edge IPv4", ServerURL: "http://test.nju.edu.cn"},
-		IPv6:        &Spec{Provider: model.ProviderNJUEdgeIPv6, StationID: "nju-edge", Label: "NJU Edge · IPv6", Family: "ipv6", ServerName: "NJU Edge IPv6", ServerURL: "http://test6.nju.edu.cn"},
+		ID:                "nju-edge",
+		Label:             "NJU Edge",
+		Description:       "public path to NJU's internet-facing edge",
+		IPv4:              &Spec{Provider: model.ProviderNJUEdgeIPv4, StationID: "nju-edge", Label: "NJU Edge · IPv4", Family: "ipv4", ServerName: "NJU Edge IPv4", ServerURL: "http://test.nju.edu.cn"},
+		IPv6:              &Spec{Provider: model.ProviderNJUEdgeIPv6, StationID: "nju-edge", Label: "NJU Edge · IPv6", Family: "ipv6", ServerName: "NJU Edge IPv6", ServerURL: "http://test6.nju.edu.cn"},
+		TerminalSupported: false,
+		UnsupportedReason: "browser verification blocks the official backend from CLI clients",
 	},
 	{
-		ID:          "mlab",
-		Label:       "M-Lab",
-		Description: "general internet NDT7 measurement",
-		MLab:        true,
+		ID:                "mlab",
+		Label:             "M-Lab",
+		Description:       "general internet NDT7 measurement",
+		MLab:              true,
+		TerminalSupported: true,
 	},
 	{
-		ID:          "cernet",
-		Label:       "CERNET",
-		Description: "CERNET public LibreSpeed station",
-		IPv4:        &Spec{Provider: model.ProviderCERNETIPv4, StationID: "cernet", Label: "CERNET · IPv4", Family: "ipv4", ServerName: "CERNET", ServerURL: "http://speedtest.sec.edu.cn"},
+		ID:                "cernet",
+		Label:             "CERNET",
+		Description:       "CERNET public LibreSpeed station",
+		IPv4:              &Spec{Provider: model.ProviderCERNETIPv4, StationID: "cernet", Label: "CERNET · IPv4", Family: "ipv4", ServerName: "CERNET", ServerURL: "http://speedtest.sec.edu.cn"},
+		TerminalSupported: true,
 	},
 	{
-		ID:          "qlu",
-		Label:       "QLU",
-		Description: "Qilu University of Technology LibreSpeed station",
-		IPv4:        &Spec{Provider: model.ProviderQLUIPv4, StationID: "qlu", Label: "QLU · IPv4", Family: "ipv4", ServerName: "QLU", ServerURL: "https://speed.qlu.edu.cn"},
+		ID:                "qlu",
+		Label:             "QLU",
+		Description:       "Qilu University of Technology LibreSpeed station",
+		IPv4:              &Spec{Provider: model.ProviderQLUIPv4, StationID: "qlu", Label: "QLU · IPv4", Family: "ipv4", ServerName: "QLU", ServerURL: "https://speed.qlu.edu.cn"},
+		TerminalSupported: true,
 	},
 	{
-		ID:          "tongji",
-		Label:       "Tongji",
-		Description: "Tongji University LibreSpeed station",
-		IPv4:        &Spec{Provider: model.ProviderTongjiIPv4, StationID: "tongji", Label: "Tongji · IPv4", Family: "ipv4", ServerName: "Tongji", ServerURL: "https://dev.tongji.edu.cn/speedtest"},
+		ID:                "tongji",
+		Label:             "Tongji",
+		Description:       "Tongji University LibreSpeed station",
+		IPv4:              &Spec{Provider: model.ProviderTongjiIPv4, StationID: "tongji", Label: "Tongji · IPv4", Family: "ipv4", ServerName: "Tongji", ServerURL: "https://dev.tongji.edu.cn/speedtest"},
+		TerminalSupported: true,
 	},
 }
 
@@ -182,6 +191,9 @@ func Expand(ids []string, family Family) ([]model.Provider, error) {
 		if !ok {
 			return nil, fmt.Errorf("unknown target %q", rawID)
 		}
+		if !station.TerminalSupported {
+			return nil, fmt.Errorf("target %q is unavailable in terminal mode: %s", id, station.UnsupportedReason)
+		}
 		if station.MLab {
 			appendProvider(model.ProviderMLab)
 			continue
@@ -252,6 +264,17 @@ func ProbeAll(ctx context.Context, timeout time.Duration) []ProbeResult {
 	var wait sync.WaitGroup
 	for _, station := range stations {
 		station := station
+		if !station.TerminalSupported {
+			mutex.Lock()
+			for _, spec := range []*Spec{station.IPv4, station.IPv6} {
+				if spec == nil {
+					continue
+				}
+				results = append(results, ProbeResult{StationID: station.ID, Family: spec.Family, Status: ProbeUnsupported, Message: station.UnsupportedReason})
+			}
+			mutex.Unlock()
+			continue
+		}
 		if station.MLab {
 			mutex.Lock()
 			results = append(results, ProbeResult{StationID: station.ID, Family: "auto", Status: ProbeAutomatic, Message: "automatic server selection"})

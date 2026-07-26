@@ -194,16 +194,6 @@ func (selector *selectorModel) applyRecommendation() {
 	}
 	if campusReachable {
 		selector.selected["nju-campus"] = true
-	} else {
-		edgeReachable := false
-		if selector.family == target.FamilyDual {
-			edgeReachable = selector.reachable("nju-edge", "ipv4") || selector.reachable("nju-edge", "ipv6")
-		} else {
-			edgeReachable = selector.reachable("nju-edge", string(selector.family))
-		}
-		if edgeReachable {
-			selector.selected["nju-edge"] = true
-		}
 	}
 	selector.setFamily(selector.family)
 }
@@ -214,6 +204,9 @@ func (selector *selectorModel) reachable(stationID, family string) bool {
 }
 
 func (selector *selectorModel) stationSupported(station target.Station, family target.Family) bool {
+	if !station.TerminalSupported {
+		return false
+	}
 	if station.MLab {
 		return true
 	}
@@ -230,6 +223,9 @@ func (selector *selectorModel) stationSupported(station target.Station, family t
 }
 
 func (selector *selectorModel) stationStatus(station target.Station) string {
+	if !station.TerminalSupported {
+		return "terminal unsupported · " + station.UnsupportedReason
+	}
 	if station.MLab {
 		return "automatic node"
 	}

@@ -272,7 +272,7 @@ func TestInteractiveConsentAccept(t *testing.T) {
 }
 
 func TestBareTTYUsesSelectorPlan(t *testing.T) {
-	providers := []model.Provider{model.ProviderNJUEdgeIPv4, model.ProviderMLab}
+	providers := []model.Provider{model.ProviderNJUCampusIPv4, model.ProviderMLab}
 	runner := &fakeRunner{summary: summaryForProviders(model.CommandRun, providers)}
 	app, _, stderr := newTestApp(t, runner)
 	app.StdoutTTY = true
@@ -280,7 +280,7 @@ func TestBareTTYUsesSelectorPlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	app.SelectorFactory = func(context.Context, io.Reader, io.Writer, string) (target.Plan, error) {
-		return target.Plan{StationIDs: []string{"nju-edge", "mlab"}, Family: target.FamilyIPv4, Providers: providers}, nil
+		return target.Plan{StationIDs: []string{"nju-campus", "mlab"}, Family: target.FamilyIPv4, Providers: providers}, nil
 	}
 	app.ProgressFactory = func(io.Writer, string, []model.Provider) (progressRenderer, error) {
 		return &fakeProgressRenderer{}, nil
@@ -288,16 +288,16 @@ func TestBareTTYUsesSelectorPlan(t *testing.T) {
 	if exitCode := app.Execute(context.Background(), nil); exitCode != 0 {
 		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
 	}
-	if len(runner.request.Targets) != 2 || runner.request.Targets[0] != model.ProviderNJUEdgeIPv4 || runner.request.Targets[1] != model.ProviderMLab {
+	if len(runner.request.Targets) != 2 || runner.request.Targets[0] != model.ProviderNJUCampusIPv4 || runner.request.Targets[1] != model.ProviderMLab {
 		t.Fatalf("targets = %#v", runner.request.Targets)
 	}
 }
 
 func TestRunTargetAndFamilyFlagsExpandDeterministically(t *testing.T) {
-	providers := []model.Provider{model.ProviderNJUEdgeIPv4, model.ProviderNJUEdgeIPv6, model.ProviderQLUIPv4}
+	providers := []model.Provider{model.ProviderNJUCampusIPv4, model.ProviderNJUCampusIPv6, model.ProviderQLUIPv4}
 	runner := &fakeRunner{summary: summaryForProviders(model.CommandRun, providers)}
 	app, _, stderr := newTestApp(t, runner)
-	exitCode := app.Execute(context.Background(), []string{"run", "--targets", "nju-edge,qlu", "--family", "dual", "--no-save"})
+	exitCode := app.Execute(context.Background(), []string{"run", "--targets", "nju-campus,qlu", "--family", "dual", "--no-save"})
 	if exitCode != 0 {
 		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
 	}
@@ -315,6 +315,16 @@ func TestDomesticDefaultsToThreeIPv4Stations(t *testing.T) {
 	}
 	if fmt.Sprint(runner.request.Targets) != fmt.Sprint(providers) {
 		t.Fatalf("targets = %#v", runner.request.Targets)
+	}
+}
+
+func TestEdgeCommandReportsTerminalUnsupported(t *testing.T) {
+	app, _, stderr := newTestApp(t, &fakeRunner{})
+	if exitCode := app.Execute(context.Background(), []string{"edge", "--no-save"}); exitCode != 1 {
+		t.Fatalf("exit code = %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "unavailable in terminal mode") {
+		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
 

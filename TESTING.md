@@ -102,8 +102,8 @@ Check:
 
 - the selector clears before progress begins;
 - Campus is recommended only when reachable for the chosen family;
-- Edge is recommended only when Campus is unavailable and Edge is reachable;
-- otherwise M-Lab alone is recommended;
+- NJU Edge is displayed as disabled with a browser-verification explanation;
+- when Campus is unavailable, M-Lab alone is recommended;
 - `4`, `6`, and `d` switch family modes;
 - IPv4-only domestic stations are disabled in IPv6 mode;
 - Space toggles stations and Enter starts the exact visible order;
@@ -129,22 +129,17 @@ nju-campus-ipv6
 
 The IPv6 result must never contain an IPv4 family or server.
 
-### Public Edge
+### Public Edge limitation
 
 ```sh
-./bin/njuprobe edge --ipv4 --no-save --json
-./bin/njuprobe edge --ipv6 --no-save --json
+./bin/njuprobe edge --no-save --json
 ./bin/njuprobe run --targets nju-edge --family dual --no-save --json
 ```
 
-The dual command must produce exactly this ordered target list:
-
-```json
-["nju-edge-ipv4", "nju-edge-ipv6"]
-```
-
-A failed Edge measurement must remain an Edge failure; it must not retry Campus
-and label the result successful.
+Both commands must exit `1` before starting LibreSpeed and report that NJU Edge
+is unavailable in terminal mode because its official backend requires browser
+verification. `njuprobe stations` must show both Edge families as `unsupported`.
+Do not add automated challenge solving to the acceptance test.
 
 ## 6. Domestic station acceptance
 
@@ -176,7 +171,7 @@ offline tests to ensure `--telemetry-level disabled` is always present.
 ```sh
 ./bin/njuprobe mlab --no-save --json
 ./bin/njuprobe run --targets nju-campus,mlab --family ipv4 --no-save --json
-./bin/njuprobe run --targets nju-edge,mlab --family dual --no-save --json
+./bin/njuprobe run --targets nju-campus,mlab --family dual --no-save --json
 ```
 
 M-Lab uses automatic Locate selection. During a TTY run its download and upload
@@ -198,7 +193,7 @@ For an interactive combined plan, verify:
 For redirected output:
 
 ```sh
-./bin/njuprobe run --targets nju-edge --family dual --no-save > /tmp/plain.txt
+./bin/njuprobe run --targets nju-campus --family dual --no-save > /tmp/plain.txt
 ```
 
 `/tmp/plain.txt` must have no ANSI bytes and no raw JSON.
@@ -206,7 +201,7 @@ For redirected output:
 For JSON:
 
 ```sh
-./bin/njuprobe run --targets nju-edge --family dual --no-save --json > /tmp/run.json
+./bin/njuprobe run --targets nju-campus --family dual --no-save --json > /tmp/run.json
 python3 -m json.tool /tmp/run.json
 ```
 
@@ -217,7 +212,7 @@ The file must contain exactly one JSON document.
 Start a multi-target plan and press Ctrl-C during an active target:
 
 ```sh
-./bin/njuprobe run --targets nju-edge,mlab --family dual
+./bin/njuprobe run --targets nju-campus,mlab --family dual
 ```
 
 Expected exit code: `130`. The active target is cancelled, every later target is

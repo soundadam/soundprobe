@@ -26,12 +26,12 @@ func TestSelectorRecommendsCampusWhenReachable(t *testing.T) {
 	}
 }
 
-func TestSelectorFallsBackToEdgeRecommendation(t *testing.T) {
+func TestSelectorDoesNotRecommendUnsupportedEdge(t *testing.T) {
 	selector := newSelectorModel("test", []target.ProbeResult{
 		{StationID: "nju-campus", Family: "ipv4", Status: target.ProbeUnreachable},
 		{StationID: "nju-edge", Family: "ipv4", Status: target.ProbeReachable},
 	})
-	if selector.selected["nju-campus"] || !selector.selected["nju-edge"] || !selector.selected["mlab"] {
+	if selector.selected["nju-campus"] || selector.selected["nju-edge"] || !selector.selected["mlab"] {
 		t.Fatalf("selection = %#v", selector.selected)
 	}
 }

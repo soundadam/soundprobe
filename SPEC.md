@@ -12,16 +12,19 @@ The maintained targets are:
 | Station ID | Measurement purpose | Families | Method |
 | --- | --- | --- | --- |
 | `nju-campus` | current path to NJU's campus-internal service | IPv4, IPv6 | LibreSpeed, three concurrent streams |
-| `nju-edge` | current public path to NJU's internet-facing edge | IPv4, IPv6 | LibreSpeed, three concurrent streams |
+| `nju-edge` | public path to NJU's internet-facing edge | IPv4, IPv6 | displayed but terminal execution disabled by browser verification |
 | `mlab` | general Internet bulk-transport performance | automatic | M-Lab NDT7, single stream |
 | `cernet` | CERNET public station | IPv4 | LibreSpeed, three concurrent streams |
 | `qlu` | Qilu University of Technology station | IPv4 | LibreSpeed, three concurrent streams |
 | `tongji` | Tongji University station | IPv4 | LibreSpeed, three concurrent streams |
 
-NJU Campus and NJU Edge answer different questions. A Campus failure must not be
-reported as an Edge success, and an Edge measurement must not be used as a
-fallback for Campus. IPv4 and IPv6 are also independent measurements. A dual
-plan expands a dual-stack station into two ordered targets.
+NJU Campus and NJU Edge answer different questions. NJU Edge remains visible in
+the product model, but its official backend currently redirects terminal clients
+to a browser-verification challenge. NJUProbe must not bypass that protection or
+publish a target that returns null. Edge selection therefore fails before
+measurement with a bounded explanation. IPv4 and IPv6 are independent
+measurements for supported stations; a dual plan expands them into ordered
+targets.
 
 The product is a macOS-first Go CLI. It has no daemon, privileged helper,
 account, cloud synchronization, automatic scheduler, or dependency on
@@ -92,16 +95,20 @@ fallback.
 
 ### 3.2 NJU Edge
 
-Pinned endpoints:
+Published endpoints:
 
 ```text
 IPv4  http://test.nju.edu.cn
 IPv6  http://test6.nju.edu.cn
 ```
 
-The service describes the path to NJU's public internet-facing edge. `edge`
-defaults to IPv4. `edge --ipv6` runs IPv6 only. It is not a replacement for an
-NJU Campus result or for a general Internet measurement.
+The service represents the path to NJU's public internet-facing edge, but its
+measurement backend is protected by an Anubis browser challenge. Standard
+LibreSpeed CLI receives a redirect and returns no measurement. NJUProbe displays
+NJU Edge as `terminal unsupported`; `edge` and `--targets nju-edge` fail before
+starting a helper. Do not automate or bypass the browser challenge. Enable this
+target only after NJU publishes a terminal-compatible endpoint or explicit
+integration contract.
 
 ### 3.3 Domestic stations
 
@@ -163,8 +170,8 @@ Recommendation rules:
 
 1. Select M-Lab.
 2. Select NJU Campus when at least one requested family is reachable.
-3. Otherwise select NJU Edge when at least one requested family is reachable.
-4. If neither NJU path is reachable, recommend M-Lab alone.
+3. If Campus is not reachable, recommend M-Lab alone.
+4. Display NJU Edge as disabled with its browser-verification explanation.
 5. Domestic stations are available but not preselected.
 
 Recommendations set defaults only. They do not authorize silent fallback during
@@ -240,7 +247,7 @@ raw provider events.
 njuprobe
 njuprobe run [--targets LIST] [--family ipv4|ipv6|dual] [--label TEXT] [--note TEXT] [--no-save]
 njuprobe campus [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
-njuprobe edge [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
+njuprobe edge [--ipv4|--ipv6]  # reports terminal unsupported
 njuprobe domestic [--targets LIST] [--family ipv4|dual] [--label TEXT] [--note TEXT] [--no-save]
 njuprobe mlab [--label TEXT] [--note TEXT] [--no-save]
 njuprobe stations [--json]
@@ -307,7 +314,7 @@ Automated tests use mock helpers and local HTTP fixtures. They cover:
 
 - explicit station/family expansion and ordering;
 - selector recommendation, family switching, toggling, cancellation, and clear;
-- NJU Campus versus Edge identity and no fallback;
+- NJU Campus identity, Edge unsupported handling, and no fallback;
 - domestic station identity and telemetry-disabled helper arguments;
 - M-Lab live event parsing and independent failure;
 - multi-target success, partial, failure, cancellation, and skipped results;
@@ -319,6 +326,6 @@ Automated tests use mock helpers and local HTTP fixtures. They cover:
 - deterministic release artifacts and Homebrew template rendering.
 
 Routine CI must never run a real bandwidth measurement or station probe.
-Operator acceptance validates real NJU Edge dual-stack, domestic stations,
-M-Lab continuation, selector interaction, Homebrew installation, and upgrade on
-a supported macOS host.
+Operator acceptance validates real NJU Campus, domestic stations, M-Lab
+continuation, Edge unsupported reporting, selector interaction, Homebrew
+installation, and upgrade on a supported macOS host.

@@ -35,6 +35,9 @@ func main() {
 	helperResolver := helper.NewResolver()
 	providers := map[model.Provider]provider.MeasurementProvider{}
 	for _, station := range target.Stations() {
+		if !station.TerminalSupported {
+			continue
+		}
 		for _, spec := range []*target.Spec{station.IPv4, station.IPv6} {
 			if spec == nil {
 				continue

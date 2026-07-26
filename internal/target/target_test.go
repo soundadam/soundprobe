@@ -11,7 +11,7 @@ import (
 )
 
 func TestExpandPreservesStationAndFamilyOrder(t *testing.T) {
-	providers, err := Expand([]string{"nju-campus", "mlab", "nju-edge"}, FamilyDual)
+	providers, err := Expand([]string{"nju-campus", "mlab", "qlu"}, FamilyDual)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -19,8 +19,7 @@ func TestExpandPreservesStationAndFamilyOrder(t *testing.T) {
 		model.ProviderNJUCampusIPv4,
 		model.ProviderNJUCampusIPv6,
 		model.ProviderMLab,
-		model.ProviderNJUEdgeIPv4,
-		model.ProviderNJUEdgeIPv6,
+		model.ProviderQLUIPv4,
 	}
 	if len(providers) != len(want) {
 		t.Fatalf("providers = %#v", providers)
@@ -32,6 +31,12 @@ func TestExpandPreservesStationAndFamilyOrder(t *testing.T) {
 	}
 }
 
+func TestExpandRejectsBrowserProtectedEdge(t *testing.T) {
+	if _, err := Expand([]string{"nju-edge"}, FamilyIPv4); err == nil {
+		t.Fatal("Expand() accepted the browser-protected NJU Edge target")
+	}
+}
+
 func TestExpandRejectsUnsupportedIPv6Station(t *testing.T) {
 	if _, err := Expand([]string{"qlu"}, FamilyIPv6); err == nil {
 		t.Fatal("Expand() succeeded for an IPv4-only station")
@@ -39,11 +44,11 @@ func TestExpandRejectsUnsupportedIPv6Station(t *testing.T) {
 }
 
 func TestNewPlanDeduplicatesRepeatedStation(t *testing.T) {
-	plan, err := NewPlan([]string{"mlab", "mlab", "nju-edge"}, FamilyIPv4)
+	plan, err := NewPlan([]string{"mlab", "mlab", "nju-campus"}, FamilyIPv4)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Providers) != 2 || plan.Providers[0] != model.ProviderMLab || plan.Providers[1] != model.ProviderNJUEdgeIPv4 {
+	if len(plan.Providers) != 2 || plan.Providers[0] != model.ProviderMLab || plan.Providers[1] != model.ProviderNJUCampusIPv4 {
 		t.Fatalf("providers = %#v", plan.Providers)
 	}
 }
