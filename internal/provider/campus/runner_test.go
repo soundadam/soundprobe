@@ -36,6 +36,7 @@ func TestRunnerMeasuresIPv4WithExactArguments(t *testing.T) {
 		"--duration", "10",
 		"--concurrent", "3",
 		"--no-icmp",
+		"--telemetry-level", "disabled",
 		"--json",
 		"--ipv4",
 	}
@@ -59,6 +60,35 @@ func TestRunnerMeasuresIPv6WithoutFallback(t *testing.T) {
 		t.Fatalf("IPv6 arguments = %#v", gotArgs)
 	}
 	assertFakeServerList(t, argsPath)
+}
+
+func TestTargetRunnerUsesPinnedExternalStationIdentity(t *testing.T) {
+	output := `[{"server":{"name":"QLU","url":"https://speed.qlu.edu.cn"},"client":{"ip":"203.0.113.42"},"bytes_sent":1000,"bytes_received":2000,"ping":10,"jitter":1,"download":20,"upload":10}]`
+	runner, argsPath := newFakeRunner(t, "", HelperVersion, 0, output)
+	runner.Config = Config{
+		Provider:   model.ProviderQLUIPv4,
+		Label:      "QLU · IPv4",
+		Family:     "ipv4",
+		ServerName: "QLU",
+		ServerURL:  "https://speed.qlu.edu.cn",
+	}
+	measurement, err := runner.Measure(context.Background(), provider.Request{Command: model.CommandDomestic})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if measurement.Provider != model.ProviderQLUIPv4 || measurement.ServerFQDN == nil || *measurement.ServerFQDN != "speed.qlu.edu.cn" {
+		t.Fatalf("measurement = %#v", measurement)
+	}
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(argsPath), "stdin.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"server":"https://speed.qlu.edu.cn"`) {
+		t.Fatalf("server list = %s", data)
+	}
+	if !contains(readArgs(t, argsPath), "--ipv4") {
+		t.Fatalf("args = %#v", readArgs(t, argsPath))
+	}
 }
 
 func TestRunnerRejectsWrongHelperVersion(t *testing.T) {

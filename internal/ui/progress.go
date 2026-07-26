@@ -12,6 +12,7 @@ import (
 
 	"github.com/soundadam/njuprobe/internal/model"
 	"github.com/soundadam/njuprobe/internal/provider"
+	"github.com/soundadam/njuprobe/internal/target"
 )
 
 const refreshInterval = 250 * time.Millisecond
@@ -32,9 +33,9 @@ type ProgressRenderer struct {
 	runErr  error
 }
 
-func NewProgressRenderer(output io.Writer, version string, command model.Command) (*ProgressRenderer, error) {
+func NewProgressRenderer(output io.Writer, version string, targets []model.Provider) (*ProgressRenderer, error) {
 	ready := make(chan struct{})
-	progressModel := newProgressModel(version, command, ready)
+	progressModel := newProgressModel(version, targets, ready)
 	program := tea.NewProgram(
 		progressModel,
 		tea.WithInput(nil),
@@ -100,7 +101,6 @@ type providerState struct {
 
 type progressModel struct {
 	version   string
-	command   model.Command
 	startedAt time.Time
 	now       time.Time
 	network   model.NetworkContext
@@ -115,13 +115,10 @@ type progressMessage provider.ProgressEvent
 type tickMessage time.Time
 type stopMessage struct{}
 
-func newProgressModel(version string, command model.Command, ready chan struct{}) *progressModel {
-	order := []model.Provider{model.ProviderCampus, model.ProviderMLab}
-	if command == model.CommandCampus {
-		order = []model.Provider{model.ProviderCampus}
-	}
-	if command == model.CommandMLab {
-		order = []model.Provider{model.ProviderMLab}
+func newProgressModel(version string, targets []model.Provider, ready chan struct{}) *progressModel {
+	order := append([]model.Provider(nil), targets...)
+	if len(order) == 0 {
+		order = []model.Provider{model.ProviderCampus, model.ProviderMLab}
 	}
 	states := make(map[model.Provider]providerState, len(order))
 	for _, name := range order {
@@ -130,7 +127,6 @@ func newProgressModel(version string, command model.Command, ready chan struct{}
 	now := time.Now()
 	return &progressModel{
 		version:   version,
-		command:   command,
 		startedAt: now,
 		now:       now,
 		providers: states,
@@ -217,7 +213,7 @@ func (progress *progressModel) View() tea.View {
 	lines := []string{
 		fmt.Sprintf("NJUProbe %s", progress.version),
 		fmt.Sprintf("Network   %s", renderNetwork(progress.network)),
-		fmt.Sprintf("Order     %s", renderOrder(progress.command)),
+		fmt.Sprintf("Order     %s", renderOrder(progress.order)),
 	}
 	for _, name := range progress.order {
 		lines = append(lines, renderProvider(name, progress.providers[name], progress.now)...)
@@ -229,17 +225,12 @@ func (progress *progressModel) View() tea.View {
 	return tea.NewView(strings.Join(lines, "\n"))
 }
 
-func renderOrder(command model.Command) string {
-	switch command {
-	case model.CommandRun:
-		return "Campus → M-Lab · sequential"
-	case model.CommandCampus:
-		return "Campus"
-	case model.CommandMLab:
-		return "M-Lab"
-	default:
-		return string(command)
+func renderOrder(providers []model.Provider) string {
+	labels := make([]string, 0, len(providers))
+	for _, provider := range providers {
+		labels = append(labels, target.Label(provider))
 	}
+	return strings.Join(labels, " → ") + " · sequential"
 }
 
 func renderNetwork(network model.NetworkContext) string {
@@ -260,11 +251,8 @@ func renderNetwork(network model.NetworkContext) string {
 }
 
 func renderProvider(name model.Provider, state providerState, now time.Time) []string {
-	label := "Campus"
-	if name == model.ProviderMLab {
-		label = "M-Lab"
-	}
-	status := fmt.Sprintf("%-9s %s %s", label, phaseMarker(state.phase), phaseLabel(state.phase, state.test))
+	label := target.Label(name)
+	status := fmt.Sprintf("%-20s %s %s", label, phaseMarker(state.phase), phaseLabel(state.phase, state.test))
 	if elapsed, ok := providerElapsed(state, now); ok {
 		status += " · " + formatElapsed(elapsed)
 	}

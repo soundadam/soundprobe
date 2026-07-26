@@ -10,11 +10,13 @@ import (
 	"github.com/soundadam/njuprobe/internal/cli"
 	"github.com/soundadam/njuprobe/internal/consent"
 	"github.com/soundadam/njuprobe/internal/helper"
+	"github.com/soundadam/njuprobe/internal/model"
 	"github.com/soundadam/njuprobe/internal/network"
 	"github.com/soundadam/njuprobe/internal/provider"
 	"github.com/soundadam/njuprobe/internal/provider/campus"
 	"github.com/soundadam/njuprobe/internal/provider/mlab"
 	"github.com/soundadam/njuprobe/internal/storage"
+	"github.com/soundadam/njuprobe/internal/target"
 )
 
 func main() {
@@ -31,10 +33,28 @@ func main() {
 	}
 
 	helperResolver := helper.NewResolver()
+	providers := map[model.Provider]provider.MeasurementProvider{}
+	for _, station := range target.Stations() {
+		for _, spec := range []*target.Spec{station.IPv4, station.IPv6} {
+			if spec == nil {
+				continue
+			}
+			providers[spec.Provider] = campus.NewTarget(helperResolver, campus.Config{
+				Provider:   spec.Provider,
+				Label:      spec.Label,
+				Family:     spec.Family,
+				ServerName: spec.ServerName,
+				ServerURL:  spec.ServerURL,
+			})
+		}
+	}
+	mlabRunner := mlab.New(helperResolver)
+	providers[model.ProviderMLab] = mlabRunner
 	measurementRunner := provider.SummaryRunner{
 		ToolVersion: buildinfo.Version,
 		Campus:      campus.New(helperResolver),
-		MLab:        mlab.New(helperResolver),
+		MLab:        mlabRunner,
+		Providers:   providers,
 		Snapshot:    network.Snapshot,
 	}
 

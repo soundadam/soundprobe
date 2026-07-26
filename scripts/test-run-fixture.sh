@@ -113,7 +113,8 @@ assert doctor["consentAccepted"] is True
 
 success = json.loads((root / "success.json").read_text())
 assert success["status"] == "success"
-assert [m["provider"] for m in success["measurements"]] == ["campus", "mlab"]
+assert success["targets"] == ["nju-campus-ipv4", "mlab"]
+assert [m["provider"] for m in success["measurements"]] == ["nju-campus-ipv4", "mlab"]
 assert success["measurements"][0]["method"] == "librespeed-three-stream"
 assert success["measurements"][1]["method"] == "ndt7-single-stream"
 assert success["measurements"][1]["downloadMbps"] == 80
@@ -197,7 +198,7 @@ if process.wait() != 0:
 raw = bytes(output)
 assert b"\x1b[?1049h" not in raw, "alternate screen was enabled"
 assert raw.count(b"Run ") == 1, "final summary was not durable and unique"
-assert b"PROVIDER" in raw and b"campus" in raw and b"mlab" in raw
+assert b"TARGET" in raw and b"NJU Campus" in raw and b"M-Lab" in raw
 assert b'"Key":"measurement"' not in raw, "provider events leaked"
 assert b"Ctrl-C" in raw, "interactive fixed block was not rendered"
 PY

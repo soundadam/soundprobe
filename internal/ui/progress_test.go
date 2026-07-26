@@ -12,7 +12,7 @@ import (
 
 func TestProgressModelRendersEqualProviderPanels(t *testing.T) {
 	ready := make(chan struct{})
-	progress := newProgressModel("test", model.CommandRun, ready)
+	progress := newProgressModel("test", []model.Provider{model.ProviderNJUCampusIPv4, model.ProviderMLab}, ready)
 	progress.startedAt = time.Date(2026, 7, 22, 8, 0, 0, 0, time.UTC)
 	progress.now = progress.startedAt.Add(12 * time.Second)
 	_, _ = progress.Update(progressMessage(provider.ProgressEvent{
@@ -23,7 +23,7 @@ func TestProgressModelRendersEqualProviderPanels(t *testing.T) {
 		},
 	}))
 	_, _ = progress.Update(progressMessage(provider.ProgressEvent{
-		Provider:     model.ProviderCampus,
+		Provider:     model.ProviderNJUCampusIPv4,
 		Phase:        provider.ProgressComplete,
 		Server:       "speed.nju.edu.cn",
 		DownloadMbps: model.Pointer(876.54),
@@ -42,12 +42,12 @@ func TestProgressModelRendersEqualProviderPanels(t *testing.T) {
 	for _, expected := range []string{
 		"NJUProbe test",
 		"Network   en0 · wifi · NJU-WLAN",
-		"Order     Campus → M-Lab · sequential",
-		"Campus    ✓ complete · 00:00",
+		"Order     NJU Campus · IPv4 → M-Lab · sequential",
+		"NJU Campus · IPv4    ✓ complete · 00:00",
 		"Activity  [████████████████████████]",
 		"Rate      ↓ 876.54 Mbps · ↑ 345.67 Mbps",
 		"Detail    server speed.nju.edu.cn",
-		"M-Lab     ◐ downloading · 00:00",
+		"M-Lab                ◐ downloading · 00:00",
 		"Rate      ↓ 80.00 Mbps · ↑ —",
 		"Detail    server ndt.example.net",
 		"Elapsed   00:12",
@@ -64,7 +64,7 @@ func TestProgressModelRendersEqualProviderPanels(t *testing.T) {
 
 func TestProgressModelKeepsLiveRatesAndRendersEitherProviderFailure(t *testing.T) {
 	ready := make(chan struct{})
-	progress := newProgressModel("test", model.CommandRun, ready)
+	progress := newProgressModel("test", []model.Provider{model.ProviderNJUCampusIPv4, model.ProviderMLab}, ready)
 	progress.startedAt = time.Unix(0, 0)
 	firstTick := progress.startedAt.Add(time.Second)
 	_, _ = progress.Update(progressMessage(provider.ProgressEvent{
@@ -84,7 +84,7 @@ func TestProgressModelKeepsLiveRatesAndRendersEitherProviderFailure(t *testing.T
 		LiveMbps: model.Pointer(4.75),
 	}))
 	_, _ = progress.Update(progressMessage(provider.ProgressEvent{
-		Provider: model.ProviderCampus,
+		Provider: model.ProviderNJUCampusIPv4,
 		Phase:    provider.ProgressFailed,
 		Message:  "server unreachable",
 	}))
@@ -92,9 +92,9 @@ func TestProgressModelKeepsLiveRatesAndRendersEitherProviderFailure(t *testing.T
 
 	view := progress.View().Content
 	for _, expected := range []string{
-		"Campus    × failed",
+		"NJU Campus · IPv4    × failed",
 		"error: server unreachable",
-		"M-Lab     ◐ uploading",
+		"M-Lab                ◐ uploading",
 		"Rate      ↓ 33.67 Mbps · ↑ 4.75 Mbps",
 		"server ndt.example.net",
 	} {
@@ -106,7 +106,7 @@ func TestProgressModelKeepsLiveRatesAndRendersEitherProviderFailure(t *testing.T
 
 func TestProgressModelRendersMLabFailureWithTheSamePanelContract(t *testing.T) {
 	ready := make(chan struct{})
-	progress := newProgressModel("test", model.CommandRun, ready)
+	progress := newProgressModel("test", []model.Provider{model.ProviderNJUCampusIPv4, model.ProviderMLab}, ready)
 	now := time.Unix(10, 0)
 	_, _ = progress.Update(progressMessage(provider.ProgressEvent{
 		Provider: model.ProviderMLab,
@@ -119,7 +119,7 @@ func TestProgressModelRendersMLabFailureWithTheSamePanelContract(t *testing.T) {
 
 	view := progress.View().Content
 	for _, expected := range []string{
-		"M-Lab     × failed · upload",
+		"M-Lab                × failed · upload",
 		"Activity  [────────────────────────]",
 		"Rate      ↓ — · ↑ —",
 		"Detail    error: dial tcp: network is unreachable",
@@ -146,12 +146,12 @@ func TestActivityBarAnimatesWithoutPretendingPercentage(t *testing.T) {
 
 func TestProgressRendererStartsUpdatesAndClears(t *testing.T) {
 	var output bytes.Buffer
-	renderer, err := NewProgressRenderer(&output, "test", model.CommandCampus)
+	renderer, err := NewProgressRenderer(&output, "test", []model.Provider{model.ProviderNJUCampusIPv4})
 	if err != nil {
 		t.Fatal(err)
 	}
 	renderer.Update(provider.ProgressEvent{
-		Provider: model.ProviderCampus,
+		Provider: model.ProviderNJUCampusIPv4,
 		Phase:    provider.ProgressMeasuring,
 	})
 	if err := renderer.Close(); err != nil {

@@ -15,6 +15,7 @@ import (
 	"github.com/soundadam/njuprobe/internal/model"
 	"github.com/soundadam/njuprobe/internal/provider"
 	"github.com/soundadam/njuprobe/internal/storage"
+	"github.com/soundadam/njuprobe/internal/target"
 )
 
 type fakeRunner struct {
@@ -77,8 +78,8 @@ func TestBareCommandRunsBothProvidersAfterConsent(t *testing.T) {
 	if runner.request.Command != model.CommandRun {
 		t.Fatalf("command = %q, want run", runner.request.Command)
 	}
-	if !strings.Contains(stdout.String(), "campus") || !strings.Contains(stdout.String(), "mlab") {
-		t.Fatalf("summary output missing providers: %q", stdout.String())
+	if !strings.Contains(stdout.String(), "NJU Campus · IPv4") || !strings.Contains(stdout.String(), "M-Lab") {
+		t.Fatalf("summary output missing targets: %q", stdout.String())
 	}
 }
 
@@ -236,7 +237,7 @@ func TestInteractiveMeasurementUsesProgressRenderer(t *testing.T) {
 	app, _, stderr := newTestApp(t, runner)
 	app.StdoutTTY = true
 	progress := &fakeProgressRenderer{}
-	app.ProgressFactory = func(io.Writer, string, model.Command) (progressRenderer, error) {
+	app.ProgressFactory = func(io.Writer, string, []model.Provider) (progressRenderer, error) {
 		return progress, nil
 	}
 	if exitCode := app.Execute(context.Background(), []string{"campus", "--no-save"}); exitCode != 0 {
@@ -270,6 +271,73 @@ func TestInteractiveConsentAccept(t *testing.T) {
 	}
 }
 
+func TestBareTTYUsesSelectorPlan(t *testing.T) {
+	providers := []model.Provider{model.ProviderNJUEdgeIPv4, model.ProviderMLab}
+	runner := &fakeRunner{summary: summaryForProviders(model.CommandRun, providers)}
+	app, _, stderr := newTestApp(t, runner)
+	app.StdoutTTY = true
+	if _, err := app.Consent.Accept(app.Version, app.Now()); err != nil {
+		t.Fatal(err)
+	}
+	app.SelectorFactory = func(context.Context, io.Reader, io.Writer, string) (target.Plan, error) {
+		return target.Plan{StationIDs: []string{"nju-edge", "mlab"}, Family: target.FamilyIPv4, Providers: providers}, nil
+	}
+	app.ProgressFactory = func(io.Writer, string, []model.Provider) (progressRenderer, error) {
+		return &fakeProgressRenderer{}, nil
+	}
+	if exitCode := app.Execute(context.Background(), nil); exitCode != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	if len(runner.request.Targets) != 2 || runner.request.Targets[0] != model.ProviderNJUEdgeIPv4 || runner.request.Targets[1] != model.ProviderMLab {
+		t.Fatalf("targets = %#v", runner.request.Targets)
+	}
+}
+
+func TestRunTargetAndFamilyFlagsExpandDeterministically(t *testing.T) {
+	providers := []model.Provider{model.ProviderNJUEdgeIPv4, model.ProviderNJUEdgeIPv6, model.ProviderQLUIPv4}
+	runner := &fakeRunner{summary: summaryForProviders(model.CommandRun, providers)}
+	app, _, stderr := newTestApp(t, runner)
+	exitCode := app.Execute(context.Background(), []string{"run", "--targets", "nju-edge,qlu", "--family", "dual", "--no-save"})
+	if exitCode != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	if fmt.Sprint(runner.request.Targets) != fmt.Sprint(providers) {
+		t.Fatalf("targets = %#v, want %#v", runner.request.Targets, providers)
+	}
+}
+
+func TestDomesticDefaultsToThreeIPv4Stations(t *testing.T) {
+	providers := []model.Provider{model.ProviderCERNETIPv4, model.ProviderQLUIPv4, model.ProviderTongjiIPv4}
+	runner := &fakeRunner{summary: summaryForProviders(model.CommandDomestic, providers)}
+	app, _, stderr := newTestApp(t, runner)
+	if exitCode := app.Execute(context.Background(), []string{"domestic", "--no-save"}); exitCode != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	if fmt.Sprint(runner.request.Targets) != fmt.Sprint(providers) {
+		t.Fatalf("targets = %#v", runner.request.Targets)
+	}
+}
+
+func TestDomesticRejectsNonDomesticTarget(t *testing.T) {
+	app, _, stderr := newTestApp(t, &fakeRunner{})
+	if exitCode := app.Execute(context.Background(), []string{"domestic", "--targets", "nju-edge"}); exitCode != 1 {
+		t.Fatalf("exit code = %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "not a domestic station") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
+func TestIPv6RejectsIPv4OnlyStation(t *testing.T) {
+	app, _, stderr := newTestApp(t, &fakeRunner{})
+	if exitCode := app.Execute(context.Background(), []string{"run", "--targets", "qlu", "--family", "ipv6"}); exitCode != 1 {
+		t.Fatalf("exit code = %d", exitCode)
+	}
+	if !strings.Contains(stderr.String(), "does not support IPv6") {
+		t.Fatalf("stderr = %q", stderr.String())
+	}
+}
+
 func newTestApp(t *testing.T, runner provider.Runner) (*App, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 	root := t.TempDir()
@@ -292,21 +360,27 @@ func newTestApp(t *testing.T, runner provider.Runner) (*App, *bytes.Buffer, *byt
 
 func successfulSummary(command model.Command) model.RunSummary {
 	now := time.Date(2026, 7, 21, 8, 0, 0, 0, time.UTC)
-	measurements := []model.Measurement{{
-		Provider:     model.ProviderCampus,
-		Method:       "librespeed-three-stream",
-		Status:       model.ProviderStatusSuccess,
-		DownloadMbps: model.Pointer(100.0),
-		UploadMbps:   model.Pointer(50.0),
-	}}
+	providers := []model.Provider{model.ProviderNJUCampusIPv4}
+	if command == model.CommandMLab {
+		providers = []model.Provider{model.ProviderMLab}
+	}
 	if command == model.CommandRun {
-		measurements = append(measurements, model.Measurement{
-			Provider:     model.ProviderMLab,
-			Method:       "ndt7-single-stream",
+		providers = []model.Provider{model.ProviderNJUCampusIPv4, model.ProviderMLab}
+	}
+	measurements := make([]model.Measurement, 0, len(providers))
+	for _, measurementProvider := range providers {
+		measurement := model.Measurement{
+			Provider:     measurementProvider,
+			Method:       model.ProviderMethod(measurementProvider),
 			Status:       model.ProviderStatusSuccess,
-			DownloadMbps: model.Pointer(80.0),
-			UploadMbps:   model.Pointer(40.0),
-		})
+			DownloadMbps: model.Pointer(100.0),
+			UploadMbps:   model.Pointer(50.0),
+		}
+		if measurementProvider == model.ProviderMLab {
+			measurement.DownloadMbps = model.Pointer(80.0)
+			measurement.UploadMbps = model.Pointer(40.0)
+		}
+		measurements = append(measurements, measurement)
 	}
 	return model.RunSummary{
 		SchemaVersion: model.SchemaVersion,
@@ -315,6 +389,32 @@ func successfulSummary(command model.Command) model.RunSummary {
 		StartedAt:     now,
 		EndedAt:       now.Add(time.Second),
 		Command:       command,
+		Targets:       providers,
+		Status:        model.RunStatusSuccess,
+		Measurements:  measurements,
+	}
+}
+
+func summaryForProviders(command model.Command, providers []model.Provider) model.RunSummary {
+	now := time.Date(2026, 7, 21, 8, 0, 0, 0, time.UTC)
+	measurements := make([]model.Measurement, 0, len(providers))
+	for _, measurementProvider := range providers {
+		measurements = append(measurements, model.Measurement{
+			Provider:     measurementProvider,
+			Method:       model.ProviderMethod(measurementProvider),
+			Status:       model.ProviderStatusSuccess,
+			DownloadMbps: model.Pointer(100.0),
+			UploadMbps:   model.Pointer(50.0),
+		})
+	}
+	return model.RunSummary{
+		SchemaVersion: model.SchemaVersion,
+		RunID:         "00000000-0000-4000-8000-000000000031",
+		ToolVersion:   "test",
+		StartedAt:     now,
+		EndedAt:       now.Add(time.Second),
+		Command:       command,
+		Targets:       append([]model.Provider(nil), providers...),
 		Status:        model.RunStatusSuccess,
 		Measurements:  measurements,
 	}

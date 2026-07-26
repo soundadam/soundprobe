@@ -54,7 +54,8 @@ run_fixture() {
     exit 1
   fi
   grep -q '"status":"success"' "$output"
-  grep -q '"provider":"campus"' "$output"
+  grep -q "\"provider\":\"nju-campus-$family\"" "$output"
+  grep -q "\"targets\":\[\"nju-campus-$family\"\]" "$output"
   grep -q "\"ipFamily\":\"$family\"" "$output"
   grep -q '"helperVersion":"v1.0.13"' "$output"
 }

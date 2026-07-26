@@ -3,6 +3,8 @@ package campus
 import (
 	"os"
 	"testing"
+
+	"github.com/soundadam/njuprobe/internal/model"
 )
 
 func TestParseResult(t *testing.T) {
@@ -10,7 +12,7 @@ func TestParseResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	measurement, err := parseResult(data, "ipv4", HelperVersion, 21_500)
+	measurement, err := parseResult(data, model.ProviderCampus, "ipv4", HelperVersion, 21_500)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +44,7 @@ func TestParseResultAllowsMissingClientIP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	measurement, err := parseResult(data, "ipv4", HelperVersion, 21_500)
+	measurement, err := parseResult(data, model.ProviderCampus, "ipv4", HelperVersion, 21_500)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +78,7 @@ func TestParseResultRejectsMalformedAndMultipleResults(t *testing.T) {
 			if family == "" {
 				family = "ipv4"
 			}
-			if _, err := parseResult([]byte(test.data), family, HelperVersion, 1); err == nil {
+			if _, err := parseResult([]byte(test.data), model.ProviderCampus, family, HelperVersion, 1); err == nil {
 				t.Fatal("parseResult() succeeded")
 			}
 		})

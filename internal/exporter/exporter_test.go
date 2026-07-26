@@ -51,8 +51,11 @@ func TestWriteCSVPreservesNullAsEmpty(t *testing.T) {
 	if len(records) != 2 {
 		t.Fatalf("rows = %d, want 2", len(records))
 	}
-	if records[1][8] != "" {
-		t.Fatalf("campus upload = %q, want empty for null", records[1][8])
+	if records[1][16] != "" {
+		t.Fatalf("measurement upload = %q, want empty for null", records[1][16])
+	}
+	if records[1][7] != string(model.ProviderCampus) {
+		t.Fatalf("target = %q", records[1][7])
 	}
 	info, err := os.Stat(path)
 	if err != nil {

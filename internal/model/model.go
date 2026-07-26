@@ -11,16 +11,27 @@ const SchemaVersion = 1
 type Command string
 
 const (
-	CommandRun    Command = "run"
-	CommandCampus Command = "campus"
-	CommandMLab   Command = "mlab"
+	CommandRun      Command = "run"
+	CommandCampus   Command = "campus"
+	CommandEdge     Command = "edge"
+	CommandDomestic Command = "domestic"
+	CommandMLab     Command = "mlab"
 )
 
 type Provider string
 
 const (
+	// ProviderCampus is retained for schema-v1 history compatibility.
 	ProviderCampus Provider = "campus"
 	ProviderMLab   Provider = "mlab"
+
+	ProviderNJUCampusIPv4 Provider = "nju-campus-ipv4"
+	ProviderNJUCampusIPv6 Provider = "nju-campus-ipv6"
+	ProviderNJUEdgeIPv4   Provider = "nju-edge-ipv4"
+	ProviderNJUEdgeIPv6   Provider = "nju-edge-ipv6"
+	ProviderCERNETIPv4    Provider = "cernet-ipv4"
+	ProviderQLUIPv4       Provider = "qlu-ipv4"
+	ProviderTongjiIPv4    Provider = "tongji-ipv4"
 )
 
 const (
@@ -105,6 +116,7 @@ type RunSummary struct {
 	StartedAt     time.Time      `json:"startedAt"`
 	EndedAt       time.Time      `json:"endedAt"`
 	Command       Command        `json:"command"`
+	Targets       []Provider     `json:"targets,omitempty"`
 	Status        RunStatus      `json:"status"`
 	Label         *string        `json:"label"`
 	Note          *string        `json:"note"`
@@ -135,13 +147,16 @@ func (summary RunSummary) Validate() error {
 		return fmt.Errorf("invalid run status %q", summary.Status)
 	}
 
-	expectedProviders := summary.Command.expectedProviders()
+	expectedProviders, err := summary.expectedProviders()
+	if err != nil {
+		return err
+	}
 	if len(summary.Measurements) != len(expectedProviders) {
 		return fmt.Errorf("command %q requires %d measurements, got %d", summary.Command, len(expectedProviders), len(summary.Measurements))
 	}
 	seenProviders := make(map[Provider]struct{}, len(summary.Measurements))
 	for index, measurement := range summary.Measurements {
-		if !measurement.Provider.valid() {
+		if !ProviderValid(measurement.Provider) {
 			return fmt.Errorf("measurement %d: invalid provider %q", index, measurement.Provider)
 		}
 		if _, exists := seenProviders[measurement.Provider]; exists {
@@ -151,7 +166,10 @@ func (summary RunSummary) Validate() error {
 		if _, expected := expectedProviders[measurement.Provider]; !expected {
 			return fmt.Errorf("measurement %d: provider %q is not valid for command %q", index, measurement.Provider, summary.Command)
 		}
-		if measurement.Method != measurement.Provider.method() {
+		if len(summary.Targets) > 0 && measurement.Provider != summary.Targets[index] {
+			return fmt.Errorf("measurement %d: provider %q does not match ordered target %q", index, measurement.Provider, summary.Targets[index])
+		}
+		if measurement.Method != ProviderMethod(measurement.Provider) {
 			return fmt.Errorf("measurement %d: method %q does not match provider %q", index, measurement.Method, measurement.Provider)
 		}
 		if !measurement.Status.valid() {
@@ -169,11 +187,28 @@ func (summary RunSummary) Validate() error {
 
 func (command Command) valid() bool {
 	switch command {
-	case CommandRun, CommandCampus, CommandMLab:
+	case CommandRun, CommandCampus, CommandEdge, CommandDomestic, CommandMLab:
 		return true
 	default:
 		return false
 	}
+}
+
+func (summary RunSummary) expectedProviders() (map[Provider]struct{}, error) {
+	if len(summary.Targets) == 0 {
+		return summary.Command.expectedProviders(), nil
+	}
+	expected := make(map[Provider]struct{}, len(summary.Targets))
+	for index, provider := range summary.Targets {
+		if !ProviderValid(provider) {
+			return nil, fmt.Errorf("target %d: invalid provider %q", index, provider)
+		}
+		if _, exists := expected[provider]; exists {
+			return nil, fmt.Errorf("target %d: duplicate provider %q", index, provider)
+		}
+		expected[provider] = struct{}{}
+	}
+	return expected, nil
 }
 
 func (command Command) expectedProviders() map[Provider]struct{} {
@@ -182,6 +217,10 @@ func (command Command) expectedProviders() map[Provider]struct{} {
 		return map[Provider]struct{}{ProviderCampus: {}}
 	case CommandMLab:
 		return map[Provider]struct{}{ProviderMLab: {}}
+	case CommandEdge:
+		return map[Provider]struct{}{ProviderNJUEdgeIPv4: {}}
+	case CommandDomestic:
+		return map[Provider]struct{}{ProviderCERNETIPv4: {}, ProviderQLUIPv4: {}, ProviderTongjiIPv4: {}}
 	case CommandRun:
 		return map[Provider]struct{}{ProviderCampus: {}, ProviderMLab: {}}
 	default:
@@ -189,13 +228,33 @@ func (command Command) expectedProviders() map[Provider]struct{} {
 	}
 }
 
-func (provider Provider) valid() bool {
-	return provider == ProviderCampus || provider == ProviderMLab
+func ProviderValid(provider Provider) bool {
+	switch provider {
+	case ProviderCampus,
+		ProviderMLab,
+		ProviderNJUCampusIPv4,
+		ProviderNJUCampusIPv6,
+		ProviderNJUEdgeIPv4,
+		ProviderNJUEdgeIPv6,
+		ProviderCERNETIPv4,
+		ProviderQLUIPv4,
+		ProviderTongjiIPv4:
+		return true
+	default:
+		return false
+	}
 }
 
-func (provider Provider) method() string {
+func ProviderMethod(provider Provider) string {
 	switch provider {
-	case ProviderCampus:
+	case ProviderCampus,
+		ProviderNJUCampusIPv4,
+		ProviderNJUCampusIPv6,
+		ProviderNJUEdgeIPv4,
+		ProviderNJUEdgeIPv6,
+		ProviderCERNETIPv4,
+		ProviderQLUIPv4,
+		ProviderTongjiIPv4:
 		return MethodLibreSpeedThreeStream
 	case ProviderMLab:
 		return MethodNDT7SingleStream
