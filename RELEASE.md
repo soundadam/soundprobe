@@ -2,12 +2,14 @@
 
 The release path is intentionally staged:
 
-1. publish a stable NJUProbe source release;
-2. publish and maintain the Formula in `soundadam/homebrew-tap`;
-3. consider `homebrew/core` only after the project has a public stable release,
+1. create a stable source tag in the private upstream repository;
+2. publish the immutable source archive in the public `soundadam/homebrew-dist`;
+3. publish and maintain the Formula in `soundadam/homebrew-tap`;
+4. consider `homebrew/core` only after the project has a public stable release,
    macOS acceptance evidence, and sufficient independent use.
 
-The repository and release assets must be publicly downloadable before a public
+The upstream repository may remain private. The Formula homepage and source URL
+must resolve anonymously through `soundadam/homebrew-dist` before a public
 Formula is advertised.
 
 ## 1. Release prerequisites
@@ -69,14 +71,29 @@ dist/Formula/njuprobe.rb
 ```
 
 The archive is generated deterministically from tag `v0.1.0`; its SHA-256 is
-inserted into the rendered Formula. Re-run the command and verify the archive
-hash is unchanged.
+inserted into the rendered Formula. The Formula points to the public
+`homebrew-dist` release tag `njuprobe-v0.1.0`, not to the private upstream
+repository. Re-run the command and verify the archive hash is unchanged.
 
-Create a GitHub Release for `v0.1.0` and upload exactly:
+Create an immutable GitHub Release in `soundadam/homebrew-dist` with tag:
+
+```text
+njuprobe-v0.1.0
+```
+
+Upload:
 
 ```text
 njuprobe-0.1.0.tar.gz
+njuprobe-0.1.0.tar.gz.sha256
+provenance.json
 ```
+
+The checksum file contains the archive SHA-256 and filename. Provenance schema
+version 1 records the upstream source repository, source tag, source commit,
+distribution repository, distribution tag, archive size, and archive checksum.
+Confirm the public release page and archive URL both return HTTP 200 without
+GitHub authentication.
 
 Do not edit or replace the asset after publishing the Formula. A changed source
 requires a new version or Formula revision and a new checksum.
@@ -87,12 +104,17 @@ With Homebrew updated on macOS:
 
 ```sh
 brew update
-brew audit --strict --new --formula ./dist/Formula/njuprobe.rb
-HOMEBREW_NO_INSTALL_FROM_API=1 \
-  brew install --build-from-source ./dist/Formula/njuprobe.rb
-brew test njuprobe
+brew style ./dist/Formula/njuprobe.rb
+
+test_tap=soundadam/njuprobe-rc-test
+brew tap-new --no-git "$test_tap"
+cp ./dist/Formula/njuprobe.rb "$(brew --repo "$test_tap")/Formula/njuprobe.rb"
+brew audit --strict --new --formula "$test_tap/njuprobe"
+HOMEBREW_NO_INSTALL_FROM_API=1 brew install --build-from-source "$test_tap/njuprobe"
+brew test "$test_tap/njuprobe"
 njuprobe doctor
 brew uninstall njuprobe
+brew untap "$test_tap"
 ```
 
 Also test upgrades from the previous released Formula once a previous version

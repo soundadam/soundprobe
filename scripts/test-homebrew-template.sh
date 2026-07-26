@@ -120,6 +120,12 @@ grep -q 'depends_on "go" => :build' "$output"
 grep -q 'resource "librespeed-cli"' "$output"
 grep -q 'resource "ndt7-client"' "$output"
 grep -q 'assert_match '\''"ready":true' "$output"
+grep -Fq 'homepage "https://github.com/soundadam/homebrew-dist/releases/tag/njuprobe-v0.1.0"' "$output"
+grep -Fq 'url "https://github.com/soundadam/homebrew-dist/releases/download/njuprobe-v0.1.0/njuprobe-0.1.0.tar.gz"' "$output"
+if grep -Eq '^[[:space:]]*head ' "$output"; then
+  echo "test-homebrew-template: Formula exposes inaccessible private HEAD source" >&2
+  exit 1
+fi
 if grep -q '@[A-Z_][A-Z_]*@' "$output"; then
   echo "test-homebrew-template: unresolved placeholder" >&2
   exit 1
