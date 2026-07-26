@@ -262,7 +262,17 @@ func classifyFailure(message string) (model.FailureStage, string) {
 		return model.FailureStageDownload, "download_failure"
 	case strings.Contains(lower, "failed to get upload speed"):
 		return model.FailureStageUpload, "upload_failure"
-	case strings.Contains(lower, "failed to get ping and jitter"), strings.Contains(lower, "failed to get ip info"), strings.Contains(lower, "connection refused"), strings.Contains(lower, "network is unreachable"), strings.Contains(lower, "not responding"):
+	case strings.Contains(lower, "failed to get ping and jitter"),
+		strings.Contains(lower, "failed to get ip info"),
+		strings.Contains(lower, "connection refused"),
+		strings.Contains(lower, "connection reset by peer"),
+		strings.Contains(lower, "connection timed out"),
+		strings.Contains(lower, "i/o timeout"),
+		strings.Contains(lower, "tls handshake timeout"),
+		strings.Contains(lower, "network is unreachable"),
+		strings.Contains(lower, "no route to host"),
+		strings.Contains(lower, "host is down"),
+		strings.Contains(lower, "not responding"):
 		return model.FailureStageConnect, "connect_failure"
 	default:
 		return model.FailureStageHelper, "helper_failure"

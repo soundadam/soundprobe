@@ -7,6 +7,7 @@ import (
 	"math"
 	"net"
 	"net/url"
+	"strings"
 
 	"github.com/soundadam/njuprobe/internal/model"
 )
@@ -65,24 +66,27 @@ func parseResult(data []byte, family, helperVersion string, durationMS int64) (m
 	if err != nil || serverURL.Hostname() == "" {
 		return model.Measurement{}, fmt.Errorf("LibreSpeed result has invalid server URL %q", report.Server.URL)
 	}
-	if report.Client.IP == "" {
-		return model.Measurement{}, errors.New("LibreSpeed result is missing client IP")
-	}
-	clientIP := net.ParseIP(report.Client.IP)
-	if clientIP == nil {
-		return model.Measurement{}, fmt.Errorf("LibreSpeed result has invalid client IP %q", report.Client.IP)
-	}
-	switch family {
-	case "ipv4":
-		if clientIP.To4() == nil {
-			return model.Measurement{}, errors.New("LibreSpeed IPv4 result contains a non-IPv4 client address")
-		}
-	case "ipv6":
-		if clientIP.To4() != nil {
-			return model.Measurement{}, errors.New("LibreSpeed IPv6 result contains an IPv4 client address")
-		}
-	default:
+	if family != "ipv4" && family != "ipv6" {
 		return model.Measurement{}, fmt.Errorf("unsupported result IP family %q", family)
+	}
+	var clientPublicIP *string
+	clientIPText := strings.TrimSpace(report.Client.IP)
+	if clientIPText != "" {
+		clientIP := net.ParseIP(clientIPText)
+		if clientIP == nil {
+			return model.Measurement{}, fmt.Errorf("LibreSpeed result has invalid client IP %q", report.Client.IP)
+		}
+		switch family {
+		case "ipv4":
+			if clientIP.To4() == nil {
+				return model.Measurement{}, errors.New("LibreSpeed IPv4 result contains a non-IPv4 client address")
+			}
+		case "ipv6":
+			if clientIP.To4() != nil {
+				return model.Measurement{}, errors.New("LibreSpeed IPv6 result contains an IPv4 client address")
+			}
+		}
+		clientPublicIP = model.Pointer(clientIPText)
 	}
 	if err := validateMetric("ping", report.Ping); err != nil {
 		return model.Measurement{}, err
@@ -112,7 +116,7 @@ func parseResult(data []byte, family, helperVersion string, durationMS int64) (m
 		ServerName:     model.Pointer(report.Server.Name),
 		ServerFQDN:     model.Pointer(fqdn),
 		ServerAddress:  model.Pointer(report.Server.URL),
-		ClientPublicIP: model.Pointer(report.Client.IP),
+		ClientPublicIP: clientPublicIP,
 		PingMS:         model.Pointer(report.Ping),
 		JitterMS:       model.Pointer(report.Jitter),
 		DownloadMbps:   model.Pointer(report.Download),

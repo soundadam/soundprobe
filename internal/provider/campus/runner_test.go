@@ -109,6 +109,21 @@ func TestRunnerClassifiesDownloadFailure(t *testing.T) {
 	}
 }
 
+func TestRunnerClassifiesServerListConnectionReset(t *testing.T) {
+	message := `Error when fetching server list: Get "http://speed.nju.edu.cn/cli.json/.well-known/librespeed": read tcp4 198.51.100.10:50681->203.0.113.20:80: read: connection reset by peer Terminated due to error`
+	runner, _ := newFakeRunner(t, "", HelperVersion, 1, message)
+	measurement, err := runner.Measure(context.Background(), provider.Request{Command: model.CommandCampus})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if measurement.Failure == nil || measurement.Failure.Stage != model.FailureStageConnect || measurement.Failure.Code != "connect_failure" {
+		t.Fatalf("failure = %#v", measurement.Failure)
+	}
+	if measurement.DownloadMbps == nil || *measurement.DownloadMbps != 0 || measurement.UploadMbps == nil || *measurement.UploadMbps != 0 {
+		t.Fatalf("failed speeds = %v/%v", measurement.DownloadMbps, measurement.UploadMbps)
+	}
+}
+
 func TestRunnerTimesOutMeasurement(t *testing.T) {
 	runner, _ := newFakeRunner(t, "", HelperVersion, 0, "")
 	t.Setenv("NJUPROBE_FAKE_SLEEP", "1")
