@@ -26,12 +26,14 @@ cp "$BINARY" "$workdir/app/bin/njuprobe"
 cat > "$helper_dir/librespeed-cli" <<EOF
 #!/bin/sh
 if [ "\${1:-}" = "--version" ]; then
-  printf 'librespeed-cli v1.0.13 (built on fixture)\n'
+  printf 'librespeed-cli v1.0.13-njuprobe.1 (built on fixture)\n'
   exit 0
 fi
 if [ -n "\${NJUPROBE_FIXTURE_DELAY:-}" ]; then
   sleep "\$NJUPROBE_FIXTURE_DELAY"
 fi
+printf '%s\n' '{"type":"progress","test":"download","elapsed_ms":1000,"bytes":6250000,"mbps":50}' >&2
+printf '%s\n' '{"type":"progress","test":"upload","elapsed_ms":1000,"bytes":625000,"mbps":5}' >&2
 cat "$CAMPUS_FIXTURE"
 EOF
 chmod 0755 "$helper_dir/librespeed-cli"
@@ -200,6 +202,7 @@ assert b"\x1b[?1049h" not in raw, "alternate screen was enabled"
 assert raw.count(b"Run ") == 1, "final summary was not durable and unique"
 assert b"TARGET" in raw and b"NJU Campus" in raw and b"M-Lab" in raw
 assert b'"Key":"measurement"' not in raw, "provider events leaked"
+assert b'"type":"progress"' not in raw, "LibreSpeed progress events leaked"
 assert b"Ctrl-C" in raw, "interactive fixed block was not rendered"
 PY
 

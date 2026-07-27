@@ -54,7 +54,8 @@ rejected or deduplicated before execution, not executed twice accidentally.
 
 ## 3. LibreSpeed target behavior
 
-Use pinned LibreSpeed CLI v1.0.13. Keep every supported server definition in the
+Use pinned LibreSpeed CLI v1.0.13 with the NJUProbe progress protocol patch.
+Keep every supported server definition in the
 release and pass one selected definition through `--local-json -`. Do not fetch
 an uncontrolled remote server directory during routine execution.
 

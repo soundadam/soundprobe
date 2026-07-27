@@ -132,12 +132,6 @@ func (accumulator *accumulator) consume(line []byte, request provider.Request) e
 		})
 	case "measurement":
 		rate, bytes, ok := liveMeasurement(value)
-		if value.Test == "download" && bytes > accumulator.downloadBytes {
-			accumulator.downloadBytes = bytes
-		}
-		if value.Test == "upload" && bytes > accumulator.uploadBytes {
-			accumulator.uploadBytes = bytes
-		}
 		phase := provider.ProgressDownloading
 		if value.Test == "upload" {
 			phase = provider.ProgressUploading
@@ -148,7 +142,18 @@ func (accumulator *accumulator) consume(line []byte, request provider.Request) e
 			Test:     value.Test,
 		}
 		if ok {
-			event.LiveMbps = model.Pointer(rate)
+			switch value.Test {
+			case "download":
+				if bytes > accumulator.downloadBytes {
+					accumulator.downloadBytes = bytes
+					event.LiveMbps = model.Pointer(rate)
+				}
+			case "upload":
+				if bytes > accumulator.uploadBytes {
+					accumulator.uploadBytes = bytes
+					event.LiveMbps = model.Pointer(rate)
+				}
+			}
 		}
 		request.Report(event)
 	case "error":
@@ -173,17 +178,11 @@ func (accumulator *accumulator) consume(line []byte, request provider.Request) e
 }
 
 func liveMeasurement(value eventValue) (float64, int64, bool) {
-	if value.AppInfo != nil && value.AppInfo.ElapsedTime > 0 && value.AppInfo.NumBytes >= 0 {
+	switch {
+	case value.Test == "download" && value.Origin == "client" && value.AppInfo != nil && value.AppInfo.ElapsedTime > 0 && value.AppInfo.NumBytes > 0:
 		return 8 * float64(value.AppInfo.NumBytes) / float64(value.AppInfo.ElapsedTime), value.AppInfo.NumBytes, true
-	}
-	if value.TCPInfo != nil && value.TCPInfo.ElapsedTime > 0 {
-		bytes := value.TCPInfo.BytesReceived
-		if bytes <= 0 {
-			bytes = value.TCPInfo.BytesSent
-		}
-		if bytes >= 0 {
-			return 8 * float64(bytes) / float64(value.TCPInfo.ElapsedTime), bytes, true
-		}
+	case value.Test == "upload" && value.Origin == "server" && value.TCPInfo != nil && value.TCPInfo.ElapsedTime > 0 && value.TCPInfo.BytesReceived > 0:
+		return 8 * float64(value.TCPInfo.BytesReceived) / float64(value.TCPInfo.ElapsedTime), value.TCPInfo.BytesReceived, true
 	}
 	return 0, 0, false
 }

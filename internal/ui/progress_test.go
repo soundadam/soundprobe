@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/soundadam/njuprobe/internal/model"
 	"github.com/soundadam/njuprobe/internal/provider"
 )
@@ -36,7 +38,6 @@ func TestProgressModelRendersEqualProviderPanels(t *testing.T) {
 		Server:   "ndt.example.net",
 		LiveMbps: model.Pointer(80.0),
 	}))
-	_, _ = progress.Update(tickMessage(progress.now))
 
 	view := progress.View().Content
 	for _, expected := range []string{
@@ -74,7 +75,7 @@ func TestProgressModelKeepsLiveRatesAndRendersEitherProviderFailure(t *testing.T
 		Server:   "ndt.example.net",
 		LiveMbps: model.Pointer(33.67),
 	}))
-	_, _ = progress.Update(tickMessage(firstTick))
+	progress.now = firstTick
 
 	secondTick := firstTick.Add(time.Second)
 	_, _ = progress.Update(progressMessage(provider.ProgressEvent{
@@ -88,7 +89,7 @@ func TestProgressModelKeepsLiveRatesAndRendersEitherProviderFailure(t *testing.T
 		Phase:    provider.ProgressFailed,
 		Message:  "server unreachable",
 	}))
-	_, _ = progress.Update(tickMessage(secondTick))
+	progress.now = secondTick
 
 	view := progress.View().Content
 	for _, expected := range []string{
@@ -115,7 +116,7 @@ func TestProgressModelRendersMLabFailureWithTheSamePanelContract(t *testing.T) {
 		Server:   "ndt.example.net",
 		Message:  "dial tcp: network is unreachable",
 	}))
-	_, _ = progress.Update(tickMessage(now))
+	progress.now = now
 
 	view := progress.View().Content
 	for _, expected := range []string{
@@ -159,5 +160,31 @@ func TestProgressRendererStartsUpdatesAndClears(t *testing.T) {
 	}
 	if err := renderer.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestProgressRendererRendersFinalFrameBeforeClear(t *testing.T) {
+	var output bytes.Buffer
+	renderer, err := newProgressRenderer(
+		&output,
+		"test",
+		[]model.Provider{model.ProviderMLab},
+		tea.WithWindowSize(120, 40),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	renderer.Update(provider.ProgressEvent{
+		Provider:     model.ProviderMLab,
+		Phase:        provider.ProgressComplete,
+		DownloadMbps: model.Pointer(44.08),
+		UploadMbps:   model.Pointer(4.23),
+	})
+	if err := renderer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := output.String(); !strings.Contains(got, "Rate      ↓ 44.08 Mbps · ↑ 4.23 Mbps") {
+		t.Fatalf("final frame was not rendered before clear:\n%q", got)
 	}
 }

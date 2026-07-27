@@ -7,16 +7,20 @@ process interfaces. Go library dependencies are locked by `go.mod` and `go.sum`.
 ## LibreSpeed CLI
 
 - Project: <https://github.com/librespeed/speedtest-cli>
-- Version: `v1.0.13`
+- Upstream version: `v1.0.13`
+- Packaged helper version: `v1.0.13-njuprobe.1`
 - Commit: `2f2408764d88e9601aa64a03b340f8e3151003e4`
 - Source archive SHA-256:
   `5ad938b61e3edc0ca95e2ccff0c06e97a69383f3cbb0243bd47b21b9865f9f55`
 - License: GNU Lesser General Public License v3.0
 - Installed executable: `libexec/njuprobe/librespeed-cli`
 
-NJUProbe communicates with LibreSpeed through its process and final JSON
-interface. The LGPL helper is not statically linked into the MIT executable.
-The Homebrew Formula installs the upstream license alongside the package.
+NJUProbe applies `patches/librespeed-cli-v1.0.13-progress-json.patch` to the
+pinned upstream source. The patch adds `--progress-json`, which emits ephemeral
+NDJSON throughput samples on stderr while preserving the final JSON result on
+stdout. The LGPL helper remains a separate executable and is not statically
+linked into the MIT executable. The source release and installed package include
+the patch, and the Homebrew Formula installs the upstream license.
 
 ## M-Lab ndt7-client-go
 

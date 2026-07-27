@@ -24,12 +24,14 @@ cp "$BINARY" "$workdir/app/bin/njuprobe"
 cat > "$workdir/helpers/librespeed-cli" <<EOF
 #!/bin/sh
 if [ "\${1:-}" = "--version" ]; then
-  printf 'librespeed-cli v1.0.13 (built on fixture)\n'
+  printf 'librespeed-cli v1.0.13-njuprobe.1 (built on fixture)\n'
   exit 0
 fi
 if [ -n "\${NJUPROBE_FIXTURE_SLEEP:-}" ]; then
   exec sleep "\$NJUPROBE_FIXTURE_SLEEP"
 fi
+printf '%s\n' '{"type":"progress","test":"download","elapsed_ms":1000,"bytes":6250000,"mbps":50}' >&2
+printf '%s\n' '{"type":"progress","test":"upload","elapsed_ms":1000,"bytes":625000,"mbps":5}' >&2
 for argument in "\$@"; do
   if [ "\$argument" = "--ipv6" ]; then
     cat "$IPV6_FIXTURE"
@@ -57,7 +59,7 @@ run_fixture() {
   grep -q "\"provider\":\"nju-campus-$family\"" "$output"
   grep -q "\"targets\":\[\"nju-campus-$family\"\]" "$output"
   grep -q "\"ipFamily\":\"$family\"" "$output"
-  grep -q '"helperVersion":"v1.0.13"' "$output"
+  grep -q '"helperVersion":"v1.0.13-njuprobe.1"' "$output"
 }
 
 run_fixture ipv4 "$workdir/ipv4.json"

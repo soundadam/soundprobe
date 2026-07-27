@@ -4,9 +4,11 @@ set -eu
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 TOOLS_DIR="$ROOT/.tools/bin"
 
-LIBRESPEED_VERSION="v1.0.13"
+LIBRESPEED_UPSTREAM_VERSION="v1.0.13"
+LIBRESPEED_HELPER_VERSION="v1.0.13-njuprobe.1"
+LIBRESPEED_PATCH="$ROOT/patches/librespeed-cli-v1.0.13-progress-json.patch"
 LIBRESPEED_ARCHIVE_SHA256="5ad938b61e3edc0ca95e2ccff0c06e97a69383f3cbb0243bd47b21b9865f9f55"
-LIBRESPEED_ARCHIVE_URL="https://codeload.github.com/librespeed/speedtest-cli/tar.gz/refs/tags/$LIBRESPEED_VERSION"
+LIBRESPEED_ARCHIVE_URL="https://codeload.github.com/librespeed/speedtest-cli/tar.gz/refs/tags/$LIBRESPEED_UPSTREAM_VERSION"
 
 NDT7_VERSION="v0.10.1"
 NDT7_ARCHIVE_SHA256="31b40268bd7a9d31bdb5507b7ade2fad2efb8abb9e7339d2f59e9cdee5340bef"
@@ -18,6 +20,10 @@ command -v curl >/dev/null 2>&1 || {
 }
 command -v go >/dev/null 2>&1 || {
   echo "install-dev-tools: Go is required" >&2
+  exit 1
+}
+command -v patch >/dev/null 2>&1 || {
+  echo "install-dev-tools: patch is required" >&2
   exit 1
 }
 command -v tar >/dev/null 2>&1 || {
@@ -67,9 +73,10 @@ fetch "$LIBRESPEED_ARCHIVE_URL" "$librespeed_archive"
 verify_archive "$librespeed_archive" "$LIBRESPEED_ARCHIVE_SHA256"
 mkdir -p "$librespeed_source"
 tar -xzf "$librespeed_archive" --strip-components=1 -C "$librespeed_source"
+patch -d "$librespeed_source" -p1 < "$LIBRESPEED_PATCH"
 
 librespeed_binary="$workdir/librespeed-cli"
-librespeed_ldflags="-s -w -buildid= -X github.com/librespeed/speedtest-cli/defs.ProgName=librespeed-cli -X github.com/librespeed/speedtest-cli/defs.ProgVersion=$LIBRESPEED_VERSION -X github.com/librespeed/speedtest-cli/defs.BuildDate=1970-01-01T00:00:00Z"
+librespeed_ldflags="-s -w -buildid= -X github.com/librespeed/speedtest-cli/defs.ProgName=librespeed-cli -X github.com/librespeed/speedtest-cli/defs.ProgVersion=$LIBRESPEED_HELPER_VERSION -X github.com/librespeed/speedtest-cli/defs.BuildDate=1970-01-01T00:00:00Z"
 (
   cd "$librespeed_source"
   GOTOOLCHAIN=auto go build -trimpath -ldflags "$librespeed_ldflags" -o "$librespeed_binary" ./
@@ -79,7 +86,7 @@ mv -f "$TOOLS_DIR/.librespeed-cli.$$" "$TOOLS_DIR/librespeed-cli"
 
 first_line=$("$TOOLS_DIR/librespeed-cli" --version | sed -n '1p')
 case "$first_line" in
-  "librespeed-cli $LIBRESPEED_VERSION "*) ;;
+  "librespeed-cli $LIBRESPEED_HELPER_VERSION "*) ;;
   *)
     echo "install-dev-tools: unexpected LibreSpeed version output: $first_line" >&2
     exit 1

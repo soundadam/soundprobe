@@ -15,7 +15,13 @@ import (
 	"github.com/soundadam/njuprobe/internal/target"
 )
 
-const refreshInterval = 250 * time.Millisecond
+const (
+	refreshInterval = 250 * time.Millisecond
+	// Bubble Tea flushes views on a renderer loop independent of Update.
+	// Keep the terminal state visible for several default renderer frames
+	// before replacing it with the blank frame used to clear the inline block.
+	finalFrameDelay = 50 * time.Millisecond
+)
 
 const (
 	activityWidth    = 24
@@ -34,13 +40,18 @@ type ProgressRenderer struct {
 }
 
 func NewProgressRenderer(output io.Writer, version string, targets []model.Provider) (*ProgressRenderer, error) {
+	return newProgressRenderer(output, version, targets)
+}
+
+func newProgressRenderer(output io.Writer, version string, targets []model.Provider, options ...tea.ProgramOption) (*ProgressRenderer, error) {
 	ready := make(chan struct{})
 	progressModel := newProgressModel(version, targets, ready)
-	program := tea.NewProgram(
-		progressModel,
+	programOptions := []tea.ProgramOption{
 		tea.WithInput(nil),
 		tea.WithOutput(output),
-	)
+	}
+	programOptions = append(programOptions, options...)
+	program := tea.NewProgram(progressModel, programOptions...)
 	renderer := &ProgressRenderer{
 		program: program,
 		ready:   ready,
@@ -106,7 +117,6 @@ type progressModel struct {
 	network   model.NetworkContext
 	providers map[model.Provider]providerState
 	order     []model.Provider
-	pending   []provider.ProgressEvent
 	ready     chan struct{}
 	blank     bool
 }
@@ -114,6 +124,7 @@ type progressModel struct {
 type progressMessage provider.ProgressEvent
 type tickMessage time.Time
 type stopMessage struct{}
+type clearMessage struct{}
 
 func newProgressModel(version string, targets []model.Provider, ready chan struct{}) *progressModel {
 	order := append([]model.Provider(nil), targets...)
@@ -149,16 +160,16 @@ func tick() tea.Cmd {
 func (progress *progressModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
 	case progressMessage:
-		progress.pending = append(progress.pending, provider.ProgressEvent(message))
+		progress.applyEvent(provider.ProgressEvent(message))
 		return progress, nil
 	case tickMessage:
 		progress.now = time.Time(message)
-		for _, event := range progress.pending {
-			progress.applyEvent(event)
-		}
-		progress.pending = progress.pending[:0]
 		return progress, tick()
 	case stopMessage:
+		return progress, tea.Tick(finalFrameDelay, func(time.Time) tea.Msg {
+			return clearMessage{}
+		})
+	case clearMessage:
 		progress.blank = true
 		return progress, tea.Quit
 	}

@@ -38,6 +38,7 @@ func TestRunnerMeasuresIPv4WithExactArguments(t *testing.T) {
 		"--no-icmp",
 		"--telemetry-level", "disabled",
 		"--json",
+		"--progress-json",
 		"--ipv4",
 	}
 	if !reflect.DeepEqual(gotArgs, wantArgs) {
@@ -91,8 +92,54 @@ func TestTargetRunnerUsesPinnedExternalStationIdentity(t *testing.T) {
 	}
 }
 
+func TestRunnerReportsProgressJSON(t *testing.T) {
+	runner, _ := newFakeRunner(t, "testdata/librespeed-success-ipv4.json", HelperVersion, 0, "")
+	t.Setenv("NJUPROBE_FAKE_PROGRESS", strings.Join([]string{
+		`{"type":"progress","test":"download","elapsed_ms":1000,"bytes":6250000,"mbps":50}`,
+		`{"type":"progress","test":"upload","elapsed_ms":1000,"bytes":625000,"mbps":5}`,
+	}, "\n"))
+	var events []provider.ProgressEvent
+	_, err := runner.Measure(context.Background(), provider.Request{
+		Command: model.CommandCampus,
+		Progress: func(event provider.ProgressEvent) {
+			events = append(events, event)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var download, upload *provider.ProgressEvent
+	for index := range events {
+		event := &events[index]
+		if event.LiveMbps == nil {
+			continue
+		}
+		switch event.Test {
+		case "download":
+			download = event
+		case "upload":
+			upload = event
+		}
+	}
+	if download == nil || download.Phase != provider.ProgressDownloading || *download.LiveMbps != 50 {
+		t.Fatalf("download progress = %#v", download)
+	}
+	if upload == nil || upload.Phase != provider.ProgressUploading || *upload.LiveMbps != 5 {
+		t.Fatalf("upload progress = %#v", upload)
+	}
+}
+
+func TestRunnerRejectsMalformedProgressJSON(t *testing.T) {
+	runner, _ := newFakeRunner(t, "testdata/librespeed-success-ipv4.json", HelperVersion, 0, "")
+	t.Setenv("NJUPROBE_FAKE_PROGRESS", `{"type":"progress","test":"download","elapsed_ms":1000,"bytes":1,"mbps":1,"extra":true}`)
+	_, err := runner.Measure(context.Background(), provider.Request{Command: model.CommandCampus})
+	if err == nil || !strings.Contains(err.Error(), "parse LibreSpeed progress output") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func TestRunnerRejectsWrongHelperVersion(t *testing.T) {
-	runner, _ := newFakeRunner(t, "testdata/librespeed-success-ipv4.json", "v1.0.12", 0, "")
+	runner, _ := newFakeRunner(t, "testdata/librespeed-success-ipv4.json", "v1.0.13", 0, "")
 	_, err := runner.Measure(context.Background(), provider.Request{Command: model.CommandCampus})
 	if !errors.Is(err, provider.ErrUnavailable) {
 		t.Fatalf("error = %v, want ErrUnavailable", err)
@@ -239,6 +286,9 @@ printf '%%s\n' "$@" > "$NJUPROBE_FAKE_ARGS"
 cat > "$NJUPROBE_FAKE_STDIN"
 if [ -n "${NJUPROBE_FAKE_SLEEP:-}" ]; then
   exec sleep "$NJUPROBE_FAKE_SLEEP"
+fi
+if [ -n "${NJUPROBE_FAKE_PROGRESS:-}" ]; then
+  printf '%%s\n' "$NJUPROBE_FAKE_PROGRESS" >&2
 fi
 if [ -n "%s" ]; then
   cat "%s"
