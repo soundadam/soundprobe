@@ -85,6 +85,10 @@ PY
 
 build_once "$workdir/archive-first.tar.gz" "$workdir/formula-first.rb" 022
 assert_publication_modes
+if ! tar -tzf "$archive" | grep -q '^njuprobe-0.1.0/patches/librespeed-cli-v1.0.13-progress-json.patch$'; then
+  echo "release artifact test: LibreSpeed progress patch is missing from source archive" >&2
+  exit 1
+fi
 build_once "$workdir/archive-second.tar.gz" "$workdir/formula-second.rb" 077
 assert_publication_modes
 

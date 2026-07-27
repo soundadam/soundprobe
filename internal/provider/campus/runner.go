@@ -1,11 +1,13 @@
 package campus
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os/exec"
 	"regexp"
@@ -22,7 +24,7 @@ import (
 
 const (
 	HelperName          = "librespeed-cli"
-	HelperVersion       = "v1.0.13"
+	HelperVersion       = "v1.0.13-njuprobe.1"
 	IPv4ServerID        = "1"
 	IPv6ServerID        = "2"
 	ConcurrentRequests  = 3
@@ -50,7 +52,7 @@ const pinnedServerListJSON = `[
   }
 ]`
 
-var versionPattern = regexp.MustCompile(`(?m)^librespeed-cli\s+(v?[0-9]+\.[0-9]+\.[0-9]+)\b`)
+var versionPattern = regexp.MustCompile(`(?m)^librespeed-cli\s+(v?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?)\s`)
 
 type HelperResolver interface {
 	Resolve(string) (helper.Resolved, error)
@@ -139,6 +141,7 @@ func (runner *Runner) Measure(ctx context.Context, request provider.Request) (mo
 		"--no-icmp",
 		"--telemetry-level", "disabled",
 		"--json",
+		"--progress-json",
 		"--" + target.family,
 	}
 	command := exec.CommandContext(measurementCtx, resolved.Path, args...)
@@ -146,11 +149,25 @@ func (runner *Runner) Measure(ctx context.Context, request provider.Request) (mo
 	stderr := newCappedBuffer(16 * 1024)
 	command.Stdin = bytes.NewReader(target.serverList)
 	command.Stdout = stdout
-	command.Stderr = stderr
-	err = command.Run()
+	progressOutput, pipeErr := command.StderrPipe()
+	if pipeErr != nil {
+		return model.Measurement{}, fmt.Errorf("open LibreSpeed progress output: %w", pipeErr)
+	}
+	err = command.Start()
+	var progressErr error
+	if err == nil {
+		progressErr = scanProgressOutput(progressOutput, stderr, target.provider, target.expectedHost, request)
+		if progressErr != nil {
+			_ = command.Process.Kill()
+		}
+		err = command.Wait()
+	}
 	durationMS := runner.Now().Sub(startedAt).Milliseconds()
 	if durationMS < 0 {
 		durationMS = 0
+	}
+	if progressErr != nil {
+		return model.Measurement{}, fmt.Errorf("parse LibreSpeed progress output: %w", progressErr)
 	}
 
 	if err != nil {
@@ -182,6 +199,24 @@ func (runner *Runner) Measure(ctx context.Context, request provider.Request) (mo
 		return model.Measurement{}, fmt.Errorf("LibreSpeed helper returned an unexpected server for %s", target.label)
 	}
 	return measurement, nil
+}
+
+func scanProgressOutput(input io.Reader, errorsOutput *cappedBuffer, measurementProvider model.Provider, server string, request provider.Request) error {
+	scanner := bufio.NewScanner(input)
+	scanner.Buffer(make([]byte, 16*1024), 256*1024)
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		recognized, err := consumeProgressLine(line, measurementProvider, server, request)
+		if err != nil {
+			return err
+		}
+		if recognized {
+			continue
+		}
+		_, _ = errorsOutput.Write(line)
+		_, _ = errorsOutput.Write([]byte{'\n'})
+	}
+	return scanner.Err()
 }
 
 func (runner *Runner) selectedTarget(request provider.Request) (selectedTarget, error) {

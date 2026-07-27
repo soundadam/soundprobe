@@ -58,7 +58,7 @@ cat .tools/bin/ndt7-client.version
 ```
 
 ```text
-librespeed-cli v1.0.13 (...)
+librespeed-cli v1.0.13-njuprobe.1 (...)
 v0.10.1
 ```
 

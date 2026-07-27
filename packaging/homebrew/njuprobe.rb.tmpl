@@ -33,10 +33,11 @@ class Njuprobe < Formula
     helper_dir.mkpath
 
     resource("librespeed-cli").stage do
+      system "patch", "-p1", "-i", buildpath/"patches/librespeed-cli-v1.0.13-progress-json.patch"
       ldflags = %w[
         -s -w -buildid=
         -X github.com/librespeed/speedtest-cli/defs.ProgName=librespeed-cli
-        -X github.com/librespeed/speedtest-cli/defs.ProgVersion=v1.0.13
+        -X github.com/librespeed/speedtest-cli/defs.ProgVersion=v1.0.13-njuprobe.1
         -X github.com/librespeed/speedtest-cli/defs.BuildDate=1970-01-01T00:00:00Z
       ].join(" ")
       system "go", "build", "-trimpath", "-ldflags", ldflags,
@@ -56,6 +57,7 @@ class Njuprobe < Formula
       (pkgshare/"licenses/ndt7-client").install "LICENSE"
     end
 
+    (pkgshare/"patches").install "patches/librespeed-cli-v1.0.13-progress-json.patch"
     pkgshare.install "LICENSE", "THIRD_PARTY_NOTICES.md"
   end
 
