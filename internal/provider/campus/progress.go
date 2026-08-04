@@ -7,8 +7,8 @@ import (
 	"io"
 	"math"
 
-	"github.com/soundadam/njuprobe/internal/model"
-	"github.com/soundadam/njuprobe/internal/provider"
+	"github.com/soundadam/soundprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/provider"
 )
 
 const libreSpeedProgressType = "progress"

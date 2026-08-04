@@ -12,32 +12,32 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/soundadam/njuprobe/internal/consent"
-	"github.com/soundadam/njuprobe/internal/exporter"
-	"github.com/soundadam/njuprobe/internal/model"
-	"github.com/soundadam/njuprobe/internal/provider"
-	"github.com/soundadam/njuprobe/internal/storage"
-	"github.com/soundadam/njuprobe/internal/target"
-	"github.com/soundadam/njuprobe/internal/ui"
+	"github.com/soundadam/soundprobe/internal/consent"
+	"github.com/soundadam/soundprobe/internal/exporter"
+	"github.com/soundadam/soundprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/provider"
+	"github.com/soundadam/soundprobe/internal/storage"
+	"github.com/soundadam/soundprobe/internal/target"
+	"github.com/soundadam/soundprobe/internal/ui"
 )
 
-const usage = `NJUProbe measures selected NJU, M-Lab, and domestic network paths.
+const usage = `SoundProbe measures selected NJU, M-Lab, and domestic network paths.
 
 Usage:
-  njuprobe
-  njuprobe run [--targets LIST] [--family ipv4|ipv6|dual] [--label TEXT] [--note TEXT] [--no-save]
-  njuprobe campus [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
-  njuprobe edge [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
-  njuprobe domestic [--targets LIST] [--family ipv4|dual] [--label TEXT] [--note TEXT] [--no-save]
-  njuprobe mlab [--label TEXT] [--note TEXT] [--no-save]
-  njuprobe stations [--json]
-  njuprobe history [--limit N]
-  njuprobe last [--json]
-  njuprobe show RUN_ID [--json]
-  njuprobe export --format jsonl|csv --output PATH
-  njuprobe consent status|accept|revoke
-  njuprobe doctor [--json]
-  njuprobe version
+  soundprobe
+  soundprobe run [--targets LIST] [--family ipv4|ipv6|dual] [--label TEXT] [--note TEXT] [--no-save]
+  soundprobe campus [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
+  soundprobe edge [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
+  soundprobe domestic [--targets LIST] [--family ipv4|dual] [--label TEXT] [--note TEXT] [--no-save]
+  soundprobe mlab [--label TEXT] [--note TEXT] [--no-save]
+  soundprobe stations [--json]
+  soundprobe history [--limit N]
+  soundprobe last [--json]
+  soundprobe show RUN_ID [--json]
+  soundprobe export --format jsonl|csv --output PATH
+  soundprobe consent status|accept|revoke
+  soundprobe doctor [--json]
+  soundprobe version
 `
 
 type progressRenderer interface {
@@ -98,7 +98,7 @@ func (app *App) Execute(ctx context.Context, args []string) int {
 		if len(rest) != 0 {
 			return app.fail(jsonMode, "invalid_arguments", "version does not accept arguments", 1)
 		}
-		return app.writeValue(jsonMode, map[string]string{"version": app.Version}, "NJUProbe "+app.Version)
+		return app.writeValue(jsonMode, map[string]string{"version": app.Version}, "SoundProbe "+app.Version)
 	case "run":
 		return app.executeMeasurement(ctx, model.CommandRun, rest, jsonMode)
 	case "campus":
@@ -535,7 +535,7 @@ func (app *App) executeDoctor(ctx context.Context, args []string, jsonMode bool)
 			return 1
 		}
 	} else {
-		fmt.Fprintf(app.Out, "NJUProbe %s diagnostics\n", app.Version)
+		fmt.Fprintf(app.Out, "SoundProbe %s diagnostics\n", app.Version)
 		fmt.Fprintf(app.Out, "Campus   %s\n", checks["campus"])
 		fmt.Fprintf(app.Out, "M-Lab    %s\n", checks["mlab"])
 		fmt.Fprintf(app.Out, "Consent  %t\n", consentAccepted)
@@ -606,7 +606,7 @@ func (app *App) ensureMLabConsent(jsonMode bool) int {
 		return 0
 	}
 	if jsonMode || !app.StdinTTY {
-		return app.fail(jsonMode, "consent_required", "M-Lab consent is required; run `njuprobe consent accept` interactively", 1)
+		return app.fail(jsonMode, "consent_required", "M-Lab consent is required; run `soundprobe consent accept` interactively", 1)
 	}
 	return app.promptAndAcceptConsent(jsonMode)
 }
@@ -635,7 +635,7 @@ func (app *App) promptAndAcceptConsent(jsonMode bool) int {
 }
 
 func (app *App) renderSummary(summary model.RunSummary) {
-	fmt.Fprintf(app.Out, "NJUProbe %s · %s · %s\n",
+	fmt.Fprintf(app.Out, "SoundProbe %s · %s · %s\n",
 		summary.ToolVersion,
 		summary.Status,
 		formatDuration(summary.EndedAt.Sub(summary.StartedAt)),
@@ -694,7 +694,7 @@ func (app *App) fail(jsonMode bool, code, message string, exitCode int) int {
 			"error": map[string]string{"code": code, "message": message},
 		})
 	} else {
-		fmt.Fprintf(app.Err, "njuprobe: %s\n", message)
+		fmt.Fprintf(app.Err, "soundprobe: %s\n", message)
 	}
 	return exitCode
 }

@@ -1,4 +1,4 @@
-module github.com/soundadam/njuprobe
+module github.com/soundadam/soundprobe
 
 go 1.25.8
 

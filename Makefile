@@ -1,11 +1,11 @@
 .PHONY: build tools verify-mod test test-race test-campus-provider test-mlab-provider test-campus-fixture test-run-fixture test-homebrew-template test-release-artifact test-offline vet check ci release clean clean-tools
 
-BINARY := bin/njuprobe
+BINARY := bin/soundprobe
 GO ?= go
 GOTOOLCHAIN ?= auto
 
 build:
-	GOTOOLCHAIN=$(GOTOOLCHAIN) $(GO) build -o $(BINARY) ./cmd/njuprobe
+	GOTOOLCHAIN=$(GOTOOLCHAIN) $(GO) build -o $(BINARY) ./cmd/soundprobe
 
 verify-mod:
 	GOTOOLCHAIN=$(GOTOOLCHAIN) $(GO) mod verify

@@ -1,4 +1,4 @@
-# Testing NJUProbe
+# Testing SoundProbe
 
 Routine tests never contact real NJU, M-Lab, or domestic bandwidth servers.
 Real measurements are explicit operator acceptance steps.
@@ -39,7 +39,7 @@ On Linux amd64, the reproducible KVM gate remains:
 make ci
 ```
 
-CI must not run `njuprobe stations` because that command intentionally performs
+CI must not run `soundprobe stations` because that command intentionally performs
 real lightweight reachability probes.
 
 ## 2. Build and helpers
@@ -47,7 +47,7 @@ real lightweight reachability probes.
 ```sh
 make tools
 make build
-./bin/njuprobe doctor --json
+./bin/soundprobe doctor --json
 ```
 
 Expected helper versions:
@@ -64,16 +64,16 @@ v0.10.1
 
 Helper discovery order:
 
-1. installed `../libexec/njuprobe`;
+1. installed `../libexec/soundprobe`;
 2. repository-local `.tools/bin`;
 3. explicit developer PATH fallback.
 
 ## 3. M-Lab consent
 
 ```sh
-./bin/njuprobe consent status
-./bin/njuprobe consent accept
-./bin/njuprobe consent status
+./bin/soundprobe consent status
+./bin/soundprobe consent accept
+./bin/soundprobe consent status
 ```
 
 Acceptance requires a terminal and the exact word `accept`. A noninteractive
@@ -85,8 +85,8 @@ plan without M-Lab must not ask for M-Lab consent.
 Station probes are lightweight but real:
 
 ```sh
-./bin/njuprobe stations
-./bin/njuprobe stations --json
+./bin/soundprobe stations
+./bin/soundprobe stations --json
 ```
 
 Verify that every registry entry has a family/status row and M-Lab is shown as
@@ -95,7 +95,7 @@ automatic rather than as a pinned server.
 Run the selector:
 
 ```sh
-./bin/njuprobe
+./bin/soundprobe
 ```
 
 Check:
@@ -116,8 +116,8 @@ These commands perform real uploads and downloads.
 ### Campus
 
 ```sh
-./bin/njuprobe campus --ipv4 --no-save --json
-./bin/njuprobe campus --ipv6 --no-save --json
+./bin/soundprobe campus --ipv4 --no-save --json
+./bin/soundprobe campus --ipv6 --no-save --json
 ```
 
 Expected target IDs:
@@ -132,13 +132,13 @@ The IPv6 result must never contain an IPv4 family or server.
 ### Public Edge limitation
 
 ```sh
-./bin/njuprobe edge --no-save --json
-./bin/njuprobe run --targets nju-edge --family dual --no-save --json
+./bin/soundprobe edge --no-save --json
+./bin/soundprobe run --targets nju-edge --family dual --no-save --json
 ```
 
 Both commands must exit `1` before starting LibreSpeed and report that NJU Edge
 is unavailable in terminal mode because its official backend requires browser
-verification. `njuprobe stations` must show both Edge families as `unsupported`.
+verification. `soundprobe stations` must show both Edge families as `unsupported`.
 Do not add automated challenge solving to the acceptance test.
 
 ## 6. Domestic station acceptance
@@ -146,15 +146,15 @@ Do not add automated challenge solving to the acceptance test.
 Run individual stations before a complete batch:
 
 ```sh
-./bin/njuprobe run --targets cernet --family ipv4 --no-save --json
-./bin/njuprobe run --targets qlu --family ipv4 --no-save --json
-./bin/njuprobe run --targets tongji --family ipv4 --no-save --json
+./bin/soundprobe run --targets cernet --family ipv4 --no-save --json
+./bin/soundprobe run --targets qlu --family ipv4 --no-save --json
+./bin/soundprobe run --targets tongji --family ipv4 --no-save --json
 ```
 
 Then validate sequential batch behavior:
 
 ```sh
-./bin/njuprobe domestic --no-save --json
+./bin/soundprobe domestic --no-save --json
 ```
 
 Expected target order:
@@ -169,9 +169,9 @@ offline tests to ensure `--telemetry-level disabled` is always present.
 ## 7. M-Lab and mixed plans
 
 ```sh
-./bin/njuprobe mlab --no-save --json
-./bin/njuprobe run --targets nju-campus,mlab --family ipv4 --no-save --json
-./bin/njuprobe run --targets nju-campus,mlab --family dual --no-save --json
+./bin/soundprobe mlab --no-save --json
+./bin/soundprobe run --targets nju-campus,mlab --family ipv4 --no-save --json
+./bin/soundprobe run --targets nju-campus,mlab --family dual --no-save --json
 ```
 
 M-Lab uses automatic Locate selection. During a TTY run its download and upload
@@ -193,7 +193,7 @@ For an interactive combined plan, verify:
 For redirected output:
 
 ```sh
-./bin/njuprobe run --targets nju-campus --family dual --no-save > /tmp/plain.txt
+./bin/soundprobe run --targets nju-campus --family dual --no-save > /tmp/plain.txt
 ```
 
 `/tmp/plain.txt` must have no ANSI bytes and no raw JSON.
@@ -201,7 +201,7 @@ For redirected output:
 For JSON:
 
 ```sh
-./bin/njuprobe run --targets nju-campus --family dual --no-save --json > /tmp/run.json
+./bin/soundprobe run --targets nju-campus --family dual --no-save --json > /tmp/run.json
 python3 -m json.tool /tmp/run.json
 ```
 
@@ -212,7 +212,7 @@ The file must contain exactly one JSON document.
 Start a multi-target plan and press Ctrl-C during an active target:
 
 ```sh
-./bin/njuprobe run --targets nju-campus,mlab --family dual
+./bin/soundprobe run --targets nju-campus,mlab --family dual
 ```
 
 Expected exit code: `130`. The active target is cancelled, every later target is
@@ -223,7 +223,7 @@ skipped, and no later helper starts.
 Save a labeled multi-target run:
 
 ```sh
-./bin/njuprobe run \
+./bin/soundprobe run \
   --targets nju-campus,mlab \
   --family ipv4 \
   --label daily \
@@ -233,9 +233,9 @@ Save a labeled multi-target run:
 Read it back:
 
 ```sh
-./bin/njuprobe last --json
-./bin/njuprobe history --limit 10
-./bin/njuprobe show RUN_ID --json
+./bin/soundprobe last --json
+./bin/soundprobe history --limit 10
+./bin/soundprobe show RUN_ID --json
 ```
 
 Verify `targets` matches measurement order. Existing 0.1 history files without
@@ -244,8 +244,8 @@ Verify `targets` matches measurement order. Existing 0.1 history files without
 Export:
 
 ```sh
-./bin/njuprobe export --format jsonl --output /tmp/njuprobe.jsonl
-./bin/njuprobe export --format csv --output /tmp/njuprobe.csv
+./bin/soundprobe export --format jsonl --output /tmp/soundprobe.jsonl
+./bin/soundprobe export --format csv --output /tmp/soundprobe.csv
 ```
 
 JSONL contains one run per line. CSV contains one row per measurement; a run with
@@ -254,8 +254,8 @@ five targets produces five data rows.
 Permission checks:
 
 ```sh
-stat -f '%Sp %N' "$HOME/Library/Application Support/njuprobe/history/v1"
-stat -f '%Sp %N' "$HOME/Library/Application Support/njuprobe/history/v1/"*.json
+stat -f '%Sp %N' "$HOME/Library/Application Support/soundprobe/history/v1"
+stat -f '%Sp %N' "$HOME/Library/Application Support/soundprobe/history/v1/"*.json
 ```
 
 Expected:
@@ -270,12 +270,12 @@ files:     -rw-------
 On supported macOS arm64 versions:
 
 ```sh
-brew style Formula/njuprobe.rb
-brew audit --strict --new --formula soundadam/tap/njuprobe
-HOMEBREW_NO_INSTALL_FROM_API=1 brew install --build-from-source soundadam/tap/njuprobe
-brew test soundadam/tap/njuprobe
-njuprobe version
-njuprobe doctor --json
+brew style Formula/soundprobe.rb
+brew audit --strict --new --formula soundadam/tap/soundprobe
+HOMEBREW_NO_INSTALL_FROM_API=1 brew install --build-from-source soundadam/tap/soundprobe
+brew test soundadam/tap/soundprobe
+soundprobe version
+soundprobe doctor --json
 ```
 
 Formula tests remain offline and do not invoke the selector, station probes, or

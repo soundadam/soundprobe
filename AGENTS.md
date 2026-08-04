@@ -1,11 +1,11 @@
 # Repository guidance
 
 - Keep the canonical repository, Formula token, and executable name
-  `njuprobe`; use `NJUProbe` only as the human-facing product name.
+  `soundprobe`; use `SoundProbe` only as the human-facing product name.
 - The v0.1 product measures the NJU LibreSpeed service and M-Lab NDT7. Do not
   add Google Fiber, Google CDN, USTC, continuous monitoring, background jobs,
   or scheduled tests without a new owner decision.
-- Keep NJUProbe independent of soundVPN, SFM, and NJUConnect. It may report the
+- Keep SoundProbe independent of soundVPN, SFM, and NJUConnect. It may report the
   active interface and observed endpoint addresses, but must not inspect those
   products' private configuration or claim which selector handled traffic.
 - Run the NJU and M-Lab tests sequentially. NJU is a three-stream LibreSpeed

@@ -6,8 +6,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/soundadam/njuprobe/internal/model"
-	"github.com/soundadam/njuprobe/internal/target"
+	"github.com/soundadam/soundprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/target"
 )
 
 func TestSelectorRecommendsCampusWhenReachable(t *testing.T) {

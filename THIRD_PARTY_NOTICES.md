@@ -15,7 +15,7 @@ version and SHA-256. Go library dependencies are locked by `go.mod` and
 - Source archive SHA-256:
   `5ad938b61e3edc0ca95e2ccff0c06e97a69383f3cbb0243bd47b21b9865f9f55`
 - License: GNU Lesser General Public License v3.0
-- Installed executable: `libexec/njuprobe/librespeed-cli`
+- Installed executable: `libexec/soundprobe/librespeed-cli`
 
 The complete maintained source is in `components/librespeed-cli`. It adds
 structured progress and explicit loopback SOCKS5 support while preserving the
@@ -32,10 +32,10 @@ license.
 - Source archive SHA-256:
   `31b40268bd7a9d31bdb5507b7ade2fad2efb8abb9e7339d2f59e9cdee5340bef`
 - License: Apache License 2.0
-- Installed executable: `libexec/njuprobe/ndt7-client`
+- Installed executable: `libexec/soundprobe/ndt7-client`
 
-NJUProbe consumes the helper's JSON event stream and identifies the client as
-`njuprobe`. Because the upstream CLI has no version-reporting command, packaging
+SoundProbe consumes the helper's JSON event stream and identifies the client as
+`soundprobe`. Because the upstream CLI has no version-reporting command, packaging
 installs `ndt7-client.version` containing `v0.10.1`; runtime preflight verifies
 that sidecar before a test. The Homebrew Formula installs the upstream license.
 

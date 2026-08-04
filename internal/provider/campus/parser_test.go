@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/soundadam/njuprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/model"
 )
 
 func TestParseResult(t *testing.T) {

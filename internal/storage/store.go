@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/soundadam/njuprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/model"
 )
 
 var safeRunID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
@@ -28,7 +28,20 @@ func DefaultHistoryDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	return filepath.Join(home, "Library", "Application Support", "njuprobe", "history", "v1"), nil
+	applicationSupport := filepath.Join(home, "Library", "Application Support")
+	current := filepath.Join(applicationSupport, "soundprobe", "history", "v1")
+	legacy := filepath.Join(applicationSupport, "njuprobe", "history", "v1")
+	return preferExistingPath(current, legacy), nil
+}
+
+func preferExistingPath(current, legacy string) string {
+	if _, err := os.Stat(current); err == nil {
+		return current
+	}
+	if _, err := os.Stat(legacy); err == nil {
+		return legacy
+	}
+	return current
 }
 
 func (store *Store) Save(summary model.RunSummary) error {

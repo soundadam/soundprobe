@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/soundadam/njuprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/model"
 )
 
 const snapshotTimeout = 2 * time.Second

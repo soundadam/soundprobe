@@ -7,8 +7,8 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/soundadam/njuprobe/internal/id"
-	"github.com/soundadam/njuprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/id"
+	"github.com/soundadam/soundprobe/internal/model"
 )
 
 var ErrUnavailable = errors.New("measurement provider unavailable")

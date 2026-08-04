@@ -17,9 +17,9 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/soundadam/njuprobe/internal/helper"
-	"github.com/soundadam/njuprobe/internal/model"
-	"github.com/soundadam/njuprobe/internal/provider"
+	"github.com/soundadam/soundprobe/internal/helper"
+	"github.com/soundadam/soundprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/provider"
 )
 
 const (
