@@ -24,7 +24,7 @@ import (
 
 const (
 	HelperName          = "librespeed-cli"
-	HelperVersion       = "v1.0.13-njuprobe.1"
+	HelperVersion       = "v1.0.13-campus.1"
 	IPv4ServerID        = "1"
 	IPv6ServerID        = "2"
 	ConcurrentRequests  = 3

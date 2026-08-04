@@ -54,8 +54,8 @@ rejected or deduplicated before execution, not executed twice accidentally.
 
 ## 3. LibreSpeed target behavior
 
-Use pinned LibreSpeed CLI v1.0.13 with the NJUProbe progress protocol patch.
-Keep every supported server definition in the
+Use the maintained LibreSpeed CLI source in `components/librespeed-cli`, based
+on pinned upstream v1.0.13. Keep every supported server definition in the
 release and pass one selected definition through `--local-json -`. Do not fetch
 an uncontrolled remote server directory during routine execution.
 
@@ -77,9 +77,9 @@ before execution. Parse exactly one final JSON result and preserve server/client
 metadata, ping, jitter, upload/download rates, byte counts, duration,
 concurrency, and helper version.
 
-LibreSpeed does not expose a stable machine-readable live-rate stream in this
-mode. Interactive output therefore uses an indeterminate activity bar and must
-not invent a percentage or live throughput value.
+The maintained helper exposes a machine-readable live-rate stream through
+`--progress-json`. Interactive output may display those observed rates but must
+not fabricate samples or percentages.
 
 ### 3.1 NJU Campus
 

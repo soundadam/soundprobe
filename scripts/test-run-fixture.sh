@@ -26,7 +26,7 @@ cp "$BINARY" "$workdir/app/bin/njuprobe"
 cat > "$helper_dir/librespeed-cli" <<EOF
 #!/bin/sh
 if [ "\${1:-}" = "--version" ]; then
-  printf 'librespeed-cli v1.0.13-njuprobe.1 (built on fixture)\n'
+  printf 'librespeed-cli v1.0.13-campus.1 (built on fixture)\n'
   exit 0
 fi
 if [ -n "\${NJUPROBE_FIXTURE_DELAY:-}" ]; then

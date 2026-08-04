@@ -58,7 +58,7 @@ cat .tools/bin/ndt7-client.version
 ```
 
 ```text
-librespeed-cli v1.0.13-njuprobe.1 (...)
+librespeed-cli v1.0.13-campus.1 (...)
 v0.10.1
 ```
 
@@ -185,7 +185,7 @@ For an interactive combined plan, verify:
 - explicit labels such as `NJU Edge · IPv6`;
 - one equal four-row panel per target;
 - fixed panel height while live M-Lab events arrive;
-- indeterminate LibreSpeed activity with no fabricated percentage;
+- observed LibreSpeed rates with no fabricated samples or percentage;
 - no alternate-screen enter/leave sequences;
 - one durable final summary after the live block clears;
 - cursor hidden during rendering and restored at completion.

@@ -26,9 +26,10 @@
   privacy policy. M-Lab test data and the ISP-provided IP address are public and
   retained indefinitely. Noninteractive execution without prior consent must
   fail closed.
-- Keep LibreSpeed CLI and ndt7-client as pinned, separately installed helper
-  executables. Do not copy their source into this repository or statically link
-  LGPL LibreSpeed code into the MIT executable.
+- Keep LibreSpeed CLI and ndt7-client as separately executed helper
+  executables. The maintained LibreSpeed source lives under
+  `components/librespeed-cli` and remains LGPL-3.0-only; do not statically link
+  it into the MIT executable or apply the repository-root MIT license to it.
 - CI uses fixtures and mock helpers only. A real bandwidth test is an explicit
   operator acceptance step and must never run in routine tests or Formula tests.
 - The owner has approved a public Homebrew distribution path. Publish only from
@@ -39,4 +40,3 @@
 - Formula tests and release automation must remain offline with respect to NJU
   and M-Lab. They may verify helper discovery, versions, storage, and command
   output but must never perform a bandwidth measurement.
-

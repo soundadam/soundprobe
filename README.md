@@ -164,10 +164,10 @@ stations are displayed but disabled with an explanation. Selecting `dual`
 expands a supported dual-stack station into two independent measurements.
 
 During execution every target has the same four-row panel: status, animated
-activity, download/upload rates, and server or failure detail. LibreSpeed targets
-use an honest indeterminate activity bar because their helper has no stable live
-rate stream. M-Lab adds transient live rates from NDT7 events. The renderer stays
-inline rather than using the alternate screen, then leaves one durable summary.
+activity, download/upload rates, and server or failure detail. The maintained
+LibreSpeed helper and M-Lab NDT7 events both provide transient live rates. The
+renderer stays inline rather than using the alternate screen, then leaves one
+durable summary.
 
 ## Script and batch use
 

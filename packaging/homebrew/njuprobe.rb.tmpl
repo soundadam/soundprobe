@@ -10,11 +10,6 @@ class Njuprobe < Formula
   license all_of: ["MIT", "LGPL-3.0-only", "Apache-2.0"]
   depends_on "go" => :build
 
-  resource "librespeed-cli" do
-    url "https://github.com/librespeed/speedtest-cli/archive/refs/tags/v1.0.13.tar.gz"
-    sha256 "5ad938b61e3edc0ca95e2ccff0c06e97a69383f3cbb0243bd47b21b9865f9f55"
-  end
-
   resource "ndt7-client" do
     url "https://github.com/m-lab/ndt7-client-go/archive/refs/tags/v0.10.1.tar.gz"
     sha256 "31b40268bd7a9d31bdb5507b7ade2fad2efb8abb9e7339d2f59e9cdee5340bef"
@@ -32,12 +27,11 @@ class Njuprobe < Formula
     helper_dir = libexec/"njuprobe"
     helper_dir.mkpath
 
-    resource("librespeed-cli").stage do
-      system "patch", "-p1", "-i", buildpath/"patches/librespeed-cli-v1.0.13-progress-json.patch"
+    cd "components/librespeed-cli" do
       ldflags = %w[
         -s -w -buildid=
         -X github.com/librespeed/speedtest-cli/defs.ProgName=librespeed-cli
-        -X github.com/librespeed/speedtest-cli/defs.ProgVersion=v1.0.13-njuprobe.1
+        -X github.com/librespeed/speedtest-cli/defs.ProgVersion=v1.0.13-campus.1
         -X github.com/librespeed/speedtest-cli/defs.BuildDate=1970-01-01T00:00:00Z
       ].join(" ")
       system "go", "build", "-trimpath", "-ldflags", ldflags,
@@ -57,7 +51,6 @@ class Njuprobe < Formula
       (pkgshare/"licenses/ndt7-client").install "LICENSE"
     end
 
-    (pkgshare/"patches").install "patches/librespeed-cli-v1.0.13-progress-json.patch"
     pkgshare.install "LICENSE", "THIRD_PARTY_NOTICES.md"
   end
 
