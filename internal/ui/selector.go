@@ -11,7 +11,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/soundadam/njuprobe/internal/target"
+	"github.com/soundadam/soundprobe/internal/target"
 )
 
 var ErrSelectionCancelled = errors.New("measurement selection cancelled")
@@ -133,7 +133,7 @@ func (selector *selectorModel) View() tea.View {
 		return tea.NewView("")
 	}
 	lines := []string{
-		fmt.Sprintf("NJUProbe %s · select measurement targets", selector.version),
+		fmt.Sprintf("SoundProbe %s · select measurement targets", selector.version),
 		fmt.Sprintf("Address family  %s   [4] IPv4  [6] IPv6  [d] dual", selector.family),
 		"",
 	}

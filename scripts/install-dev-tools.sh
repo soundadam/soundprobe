@@ -4,11 +4,8 @@ set -eu
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 TOOLS_DIR="$ROOT/.tools/bin"
 
-LIBRESPEED_UPSTREAM_VERSION="v1.0.13"
-LIBRESPEED_HELPER_VERSION="v1.0.13-njuprobe.1"
-LIBRESPEED_PATCH="$ROOT/patches/librespeed-cli-v1.0.13-progress-json.patch"
-LIBRESPEED_ARCHIVE_SHA256="5ad938b61e3edc0ca95e2ccff0c06e97a69383f3cbb0243bd47b21b9865f9f55"
-LIBRESPEED_ARCHIVE_URL="https://codeload.github.com/librespeed/speedtest-cli/tar.gz/refs/tags/$LIBRESPEED_UPSTREAM_VERSION"
+LIBRESPEED_HELPER_VERSION="v1.0.13-campus.1"
+LIBRESPEED_SOURCE="$ROOT/components/librespeed-cli"
 
 NDT7_VERSION="v0.10.1"
 NDT7_ARCHIVE_SHA256="31b40268bd7a9d31bdb5507b7ade2fad2efb8abb9e7339d2f59e9cdee5340bef"
@@ -20,10 +17,6 @@ command -v curl >/dev/null 2>&1 || {
 }
 command -v go >/dev/null 2>&1 || {
   echo "install-dev-tools: Go is required" >&2
-  exit 1
-}
-command -v patch >/dev/null 2>&1 || {
-  echo "install-dev-tools: patch is required" >&2
   exit 1
 }
 command -v tar >/dev/null 2>&1 || {
@@ -61,24 +54,16 @@ verify_archive() {
 }
 
 mkdir -p "$TOOLS_DIR"
-workdir=$(mktemp -d "${TMPDIR:-/tmp}/njuprobe-tools.XXXXXX")
+workdir=$(mktemp -d "${TMPDIR:-/tmp}/soundprobe-tools.XXXXXX")
 cleanup() {
   rm -rf "$workdir"
 }
 trap cleanup EXIT HUP INT TERM
 
-librespeed_archive="$workdir/librespeed.tar.gz"
-librespeed_source="$workdir/librespeed"
-fetch "$LIBRESPEED_ARCHIVE_URL" "$librespeed_archive"
-verify_archive "$librespeed_archive" "$LIBRESPEED_ARCHIVE_SHA256"
-mkdir -p "$librespeed_source"
-tar -xzf "$librespeed_archive" --strip-components=1 -C "$librespeed_source"
-patch -d "$librespeed_source" -p1 < "$LIBRESPEED_PATCH"
-
 librespeed_binary="$workdir/librespeed-cli"
 librespeed_ldflags="-s -w -buildid= -X github.com/librespeed/speedtest-cli/defs.ProgName=librespeed-cli -X github.com/librespeed/speedtest-cli/defs.ProgVersion=$LIBRESPEED_HELPER_VERSION -X github.com/librespeed/speedtest-cli/defs.BuildDate=1970-01-01T00:00:00Z"
 (
-  cd "$librespeed_source"
+  cd "$LIBRESPEED_SOURCE"
   GOTOOLCHAIN=auto go build -trimpath -ldflags "$librespeed_ldflags" -o "$librespeed_binary" ./
 )
 install -m 0755 "$librespeed_binary" "$TOOLS_DIR/.librespeed-cli.$$"
@@ -101,7 +86,7 @@ mkdir -p "$ndt7_source"
 tar -xzf "$ndt7_archive" --strip-components=1 -C "$ndt7_source"
 
 ndt7_binary="$workdir/ndt7-client-bin"
-ndt7_ldflags="-s -w -buildid= -X main.ClientName=njuprobe -X main.ClientVersion=0.10.1"
+ndt7_ldflags="-s -w -buildid= -X main.ClientName=soundprobe -X main.ClientVersion=0.10.1"
 (
   cd "$ndt7_source"
   GOTOOLCHAIN=auto go build -trimpath -ldflags "$ndt7_ldflags" -o "$ndt7_binary" ./cmd/ndt7-client

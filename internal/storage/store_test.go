@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/soundadam/njuprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/model"
 )
 
 func TestSaveLoadAndModes(t *testing.T) {
@@ -59,6 +59,35 @@ func TestListNewestFirstAndLimit(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].RunID != "newer" {
 		t.Fatalf("List(1) = %#v, want newest only", items)
+	}
+}
+
+func TestDefaultHistoryDirPreservesLegacyData(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	legacy := filepath.Join(home, "Library", "Application Support", "njuprobe", "history", "v1")
+	if err := os.MkdirAll(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	path, err := DefaultHistoryDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != legacy {
+		t.Fatalf("DefaultHistoryDir() = %q, want legacy %q", path, legacy)
+	}
+
+	current := filepath.Join(home, "Library", "Application Support", "soundprobe", "history", "v1")
+	if err := os.MkdirAll(current, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path, err = DefaultHistoryDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != current {
+		t.Fatalf("DefaultHistoryDir() = %q, want current %q", path, current)
 	}
 }
 

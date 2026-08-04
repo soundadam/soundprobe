@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/soundadam/njuprobe/internal/model"
-	"github.com/soundadam/njuprobe/internal/provider"
+	"github.com/soundadam/soundprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/provider"
 )
 
 func TestAccumulatorBuildsSuccessfulMeasurement(t *testing.T) {

@@ -17,14 +17,14 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/soundadam/njuprobe/internal/helper"
-	"github.com/soundadam/njuprobe/internal/model"
-	"github.com/soundadam/njuprobe/internal/provider"
+	"github.com/soundadam/soundprobe/internal/helper"
+	"github.com/soundadam/soundprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/provider"
 )
 
 const (
 	HelperName          = "librespeed-cli"
-	HelperVersion       = "v1.0.13-njuprobe.1"
+	HelperVersion       = "v1.0.13-campus.1"
 	IPv4ServerID        = "1"
 	IPv6ServerID        = "2"
 	ConcurrentRequests  = 3

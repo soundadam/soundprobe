@@ -10,9 +10,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/soundadam/njuprobe/internal/model"
-	"github.com/soundadam/njuprobe/internal/provider"
-	"github.com/soundadam/njuprobe/internal/target"
+	"github.com/soundadam/soundprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/provider"
+	"github.com/soundadam/soundprobe/internal/target"
 )
 
 const (
@@ -222,7 +222,7 @@ func (progress *progressModel) View() tea.View {
 		return tea.NewView("")
 	}
 	lines := []string{
-		fmt.Sprintf("NJUProbe %s", progress.version),
+		fmt.Sprintf("SoundProbe %s", progress.version),
 		fmt.Sprintf("Network   %s", renderNetwork(progress.network)),
 		fmt.Sprintf("Order     %s", renderOrder(progress.order)),
 	}

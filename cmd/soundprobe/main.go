@@ -6,29 +6,29 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/soundadam/njuprobe/internal/buildinfo"
-	"github.com/soundadam/njuprobe/internal/cli"
-	"github.com/soundadam/njuprobe/internal/consent"
-	"github.com/soundadam/njuprobe/internal/helper"
-	"github.com/soundadam/njuprobe/internal/model"
-	"github.com/soundadam/njuprobe/internal/network"
-	"github.com/soundadam/njuprobe/internal/provider"
-	"github.com/soundadam/njuprobe/internal/provider/campus"
-	"github.com/soundadam/njuprobe/internal/provider/mlab"
-	"github.com/soundadam/njuprobe/internal/storage"
-	"github.com/soundadam/njuprobe/internal/target"
+	"github.com/soundadam/soundprobe/internal/buildinfo"
+	"github.com/soundadam/soundprobe/internal/cli"
+	"github.com/soundadam/soundprobe/internal/consent"
+	"github.com/soundadam/soundprobe/internal/helper"
+	"github.com/soundadam/soundprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/network"
+	"github.com/soundadam/soundprobe/internal/provider"
+	"github.com/soundadam/soundprobe/internal/provider/campus"
+	"github.com/soundadam/soundprobe/internal/provider/mlab"
+	"github.com/soundadam/soundprobe/internal/storage"
+	"github.com/soundadam/soundprobe/internal/target"
 )
 
 func main() {
 	historyDir, err := storage.DefaultHistoryDir()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "njuprobe: determine history directory: %v\n", err)
+		fmt.Fprintf(os.Stderr, "soundprobe: determine history directory: %v\n", err)
 		os.Exit(1)
 	}
 
 	consentPath, err := consent.DefaultPath()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "njuprobe: determine consent path: %v\n", err)
+		fmt.Fprintf(os.Stderr, "soundprobe: determine consent path: %v\n", err)
 		os.Exit(1)
 	}
 

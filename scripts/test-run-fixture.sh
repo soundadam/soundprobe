@@ -2,7 +2,7 @@
 set -eu
 
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
-BINARY="$ROOT/bin/njuprobe"
+BINARY="$ROOT/bin/soundprobe"
 CAMPUS_FIXTURE="$ROOT/internal/provider/campus/testdata/librespeed-success-ipv4.json"
 MLAB_SUCCESS_FIXTURE="$ROOT/internal/provider/mlab/testdata/ndt7-success.jsonl"
 MLAB_FAILURE_FIXTURE="$ROOT/internal/provider/mlab/testdata/ndt7-upload-failure.jsonl"
@@ -10,27 +10,27 @@ MLAB_FAILURE_FIXTURE="$ROOT/internal/provider/mlab/testdata/ndt7-upload-failure.
 mkdir -p "$ROOT/bin"
 (
   cd "$ROOT"
-  GOTOOLCHAIN=auto go build -o "$BINARY" ./cmd/njuprobe
+  GOTOOLCHAIN=auto go build -o "$BINARY" ./cmd/soundprobe
 )
 
-workdir=$(mktemp -d "${TMPDIR:-/tmp}/njuprobe-run-fixture.XXXXXX")
+workdir=$(mktemp -d "${TMPDIR:-/tmp}/soundprobe-run-fixture.XXXXXX")
 cleanup() {
   rm -rf "$workdir"
 }
 trap cleanup EXIT HUP INT TERM
 
-helper_dir="$workdir/app/libexec/njuprobe"
+helper_dir="$workdir/app/libexec/soundprobe"
 mkdir -p "$workdir/app/bin" "$helper_dir" "$workdir/home" "$workdir/work"
-cp "$BINARY" "$workdir/app/bin/njuprobe"
+cp "$BINARY" "$workdir/app/bin/soundprobe"
 
 cat > "$helper_dir/librespeed-cli" <<EOF
 #!/bin/sh
 if [ "\${1:-}" = "--version" ]; then
-  printf 'librespeed-cli v1.0.13-njuprobe.1 (built on fixture)\n'
+  printf 'librespeed-cli v1.0.13-campus.1 (built on fixture)\n'
   exit 0
 fi
-if [ -n "\${NJUPROBE_FIXTURE_DELAY:-}" ]; then
-  sleep "\$NJUPROBE_FIXTURE_DELAY"
+if [ -n "\${SOUNDPROBE_FIXTURE_DELAY:-}" ]; then
+  sleep "\$SOUNDPROBE_FIXTURE_DELAY"
 fi
 printf '%s\n' '{"type":"progress","test":"download","elapsed_ms":1000,"bytes":6250000,"mbps":50}' >&2
 printf '%s\n' '{"type":"progress","test":"upload","elapsed_ms":1000,"bytes":625000,"mbps":5}' >&2
@@ -40,10 +40,10 @@ chmod 0755 "$helper_dir/librespeed-cli"
 
 cat > "$helper_dir/ndt7-client" <<EOF
 #!/bin/sh
-if [ -n "\${NJUPROBE_FIXTURE_DELAY:-}" ]; then
-  sleep "\$NJUPROBE_FIXTURE_DELAY"
+if [ -n "\${SOUNDPROBE_FIXTURE_DELAY:-}" ]; then
+  sleep "\$SOUNDPROBE_FIXTURE_DELAY"
 fi
-if [ "\${NJUPROBE_NDT7_FIXTURE:-success}" = "failure" ]; then
+if [ "\${SOUNDPROBE_NDT7_FIXTURE:-success}" = "failure" ]; then
   cat "$MLAB_FAILURE_FIXTURE"
   exit 1
 fi
@@ -53,7 +53,7 @@ chmod 0755 "$helper_dir/ndt7-client"
 printf '%s\n' 'v0.10.1' > "$helper_dir/ndt7-client.version"
 chmod 0600 "$helper_dir/ndt7-client.version"
 
-consent_dir="$workdir/home/Library/Application Support/njuprobe"
+consent_dir="$workdir/home/Library/Application Support/soundprobe"
 mkdir -p "$consent_dir"
 cat > "$consent_dir/consent.json" <<'EOF'
 {
@@ -72,7 +72,7 @@ run_command() {
   (
     cd "$workdir/work"
     HOME="$workdir/home" PATH="$PATH" \
-      "$workdir/app/bin/njuprobe" "$@"
+      "$workdir/app/bin/soundprobe" "$@"
   ) > "$output"
 }
 
@@ -82,8 +82,8 @@ run_command "$workdir/success.json" run --no-save --json
 set +e
 (
   cd "$workdir/work"
-  HOME="$workdir/home" PATH="$PATH" NJUPROBE_NDT7_FIXTURE=failure \
-    "$workdir/app/bin/njuprobe" run --no-save --json
+  HOME="$workdir/home" PATH="$PATH" SOUNDPROBE_NDT7_FIXTURE=failure \
+    "$workdir/app/bin/soundprobe" run --no-save --json
 ) > "$workdir/partial.json"
 partial_exit=$?
 set -e
@@ -152,13 +152,13 @@ env = os.environ.copy()
 env.update({
     "HOME": str(root / "home"),
     "PATH": env["PATH"],
-    "NJUPROBE_FIXTURE_DELAY": "0.15",
+    "SOUNDPROBE_FIXTURE_DELAY": "0.15",
     "TERM": "xterm-256color",
 })
 master, slave = pty.openpty()
 fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 120, 0, 0))
 process = subprocess.Popen(
-    [str(root / "app/bin/njuprobe"), "run", "--no-save"],
+    [str(root / "app/bin/soundprobe"), "run", "--no-save"],
     stdin=slave,
     stdout=slave,
     stderr=slave,

@@ -1,26 +1,28 @@
 # Third-party components
 
-No helper source or binary is committed to this repository. Helper sources are
-pinned by immutable version and SHA-256, built separately, and invoked through
-process interfaces. Go library dependencies are locked by `go.mod` and `go.sum`.
+The maintained LibreSpeed helper source is committed under `components` with
+its own license boundary. Helper binaries are built separately and invoked
+through process interfaces. Other helper sources remain pinned by immutable
+version and SHA-256. Go library dependencies are locked by `go.mod` and
+`go.sum`.
 
 ## LibreSpeed CLI
 
 - Project: <https://github.com/librespeed/speedtest-cli>
 - Upstream version: `v1.0.13`
-- Packaged helper version: `v1.0.13-njuprobe.1`
+- Maintained helper version: `v1.0.13-campus.1`
 - Commit: `2f2408764d88e9601aa64a03b340f8e3151003e4`
 - Source archive SHA-256:
   `5ad938b61e3edc0ca95e2ccff0c06e97a69383f3cbb0243bd47b21b9865f9f55`
 - License: GNU Lesser General Public License v3.0
-- Installed executable: `libexec/njuprobe/librespeed-cli`
+- Installed executable: `libexec/soundprobe/librespeed-cli`
 
-NJUProbe applies `patches/librespeed-cli-v1.0.13-progress-json.patch` to the
-pinned upstream source. The patch adds `--progress-json`, which emits ephemeral
-NDJSON throughput samples on stderr while preserving the final JSON result on
-stdout. The LGPL helper remains a separate executable and is not statically
-linked into the MIT executable. The source release and installed package include
-the patch, and the Homebrew Formula installs the upstream license.
+The complete maintained source is in `components/librespeed-cli`. It adds
+structured progress and explicit loopback SOCKS5 support while preserving the
+upstream module and LGPL license. The helper remains a separate executable and
+is not statically linked into the MIT executable. The source release contains
+the complete corresponding source, and the Homebrew Formula installs its
+license.
 
 ## M-Lab ndt7-client-go
 
@@ -30,10 +32,10 @@ the patch, and the Homebrew Formula installs the upstream license.
 - Source archive SHA-256:
   `31b40268bd7a9d31bdb5507b7ade2fad2efb8abb9e7339d2f59e9cdee5340bef`
 - License: Apache License 2.0
-- Installed executable: `libexec/njuprobe/ndt7-client`
+- Installed executable: `libexec/soundprobe/ndt7-client`
 
-NJUProbe consumes the helper's JSON event stream and identifies the client as
-`njuprobe`. Because the upstream CLI has no version-reporting command, packaging
+SoundProbe consumes the helper's JSON event stream and identifies the client as
+`soundprobe`. Because the upstream CLI has no version-reporting command, packaging
 installs `ndt7-client.version` containing `v0.10.1`; runtime preflight verifies
 that sidecar before a test. The Homebrew Formula installs the upstream license.
 

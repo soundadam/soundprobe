@@ -11,15 +11,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/soundadam/njuprobe/internal/helper"
-	"github.com/soundadam/njuprobe/internal/model"
-	"github.com/soundadam/njuprobe/internal/provider"
+	"github.com/soundadam/soundprobe/internal/helper"
+	"github.com/soundadam/soundprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/provider"
 )
 
 const (
 	HelperName            = "ndt7-client"
 	HelperVersion         = "v0.10.1"
-	ClientName            = "njuprobe"
+	ClientName            = "soundprobe"
 	HelperInternalTimeout = 55 * time.Second
 )
 

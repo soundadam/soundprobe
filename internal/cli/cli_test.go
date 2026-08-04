@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/soundadam/njuprobe/internal/consent"
-	"github.com/soundadam/njuprobe/internal/model"
-	"github.com/soundadam/njuprobe/internal/provider"
-	"github.com/soundadam/njuprobe/internal/storage"
-	"github.com/soundadam/njuprobe/internal/target"
+	"github.com/soundadam/soundprobe/internal/consent"
+	"github.com/soundadam/soundprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/provider"
+	"github.com/soundadam/soundprobe/internal/storage"
+	"github.com/soundadam/soundprobe/internal/target"
 )
 
 type fakeRunner struct {

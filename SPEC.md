@@ -1,8 +1,8 @@
-# NJUProbe v0.2 implementation specification
+# SoundProbe v0.2 implementation specification
 
 ## 1. Product contract
 
-NJUProbe measures explicitly selected network targets. A target represents one
+SoundProbe measures explicitly selected network targets. A target represents one
 measurement purpose and, where relevant, one address family. Results from
 separate targets must never be silently substituted, ranked, or collapsed into a
 synthetic score.
@@ -20,7 +20,7 @@ The maintained targets are:
 
 NJU Campus and NJU Edge answer different questions. NJU Edge remains visible in
 the product model, but its official backend currently redirects terminal clients
-to a browser-verification challenge. NJUProbe must not bypass that protection or
+to a browser-verification challenge. SoundProbe must not bypass that protection or
 publish a target that returns null. Edge selection therefore fails before
 measurement with a bounded explanation. IPv4 and IPv6 are independent
 measurements for supported stations; a dual plan expands them into ordered
@@ -46,7 +46,7 @@ tongji-ipv4
 ```
 
 The legacy provider ID `campus` remains valid only so schema-v1 history written
-by NJUProbe 0.1 can still be read. New measurements use explicit IDs.
+by SoundProbe 0.1 can still be read. New measurements use explicit IDs.
 
 Every new run summary includes an ordered `targets` array. The number and order
 of measurement objects must match the requested targets. Duplicate targets are
@@ -54,8 +54,8 @@ rejected or deduplicated before execution, not executed twice accidentally.
 
 ## 3. LibreSpeed target behavior
 
-Use pinned LibreSpeed CLI v1.0.13 with the NJUProbe progress protocol patch.
-Keep every supported server definition in the
+Use the maintained LibreSpeed CLI source in `components/librespeed-cli`, based
+on pinned upstream v1.0.13. Keep every supported server definition in the
 release and pass one selected definition through `--local-json -`. Do not fetch
 an uncontrolled remote server directory during routine execution.
 
@@ -77,9 +77,9 @@ before execution. Parse exactly one final JSON result and preserve server/client
 metadata, ping, jitter, upload/download rates, byte counts, duration,
 concurrency, and helper version.
 
-LibreSpeed does not expose a stable machine-readable live-rate stream in this
-mode. Interactive output therefore uses an indeterminate activity bar and must
-not invent a percentage or live throughput value.
+The maintained helper exposes a machine-readable live-rate stream through
+`--progress-json`. Interactive output may display those observed rates but must
+not fabricate samples or percentages.
 
 ### 3.1 NJU Campus
 
@@ -105,7 +105,7 @@ IPv6  http://test6.nju.edu.cn
 
 The service represents the path to NJU's public internet-facing edge, but its
 measurement backend is protected by an Anubis browser challenge. Standard
-LibreSpeed CLI receives a redirect and returns no measurement. NJUProbe displays
+LibreSpeed CLI receives a redirect and returns no measurement. SoundProbe displays
 NJU Edge as `terminal unsupported`; `edge` and `--targets nju-edge` fail before
 starting a helper. Do not automate or bypass the browser challenge. Enable this
 target only after NJU publishes a terminal-compatible endpoint or explicit
@@ -128,7 +128,7 @@ CERNET, QLU, then Tongji sequentially.
 ## 4. M-Lab behavior
 
 Run pinned `ndt7-client` v0.10.1 with JSON events, TLS verification, client name
-`njuprobe`, both download and upload, and a 55-second whole-test timeout. Use
+`soundprobe`, both download and upload, and a 55-second whole-test timeout. Use
 M-Lab Locate rather than pinning a server.
 
 Consume `starting`, `connected`, `measurement`, `error`, and `complete` events.
@@ -146,7 +146,7 @@ ordered plan is visible before and during execution.
 
 ### 5.1 Interactive selector
 
-Bare `njuprobe` in an interactive terminal performs bounded, lightweight
+Bare `soundprobe` in an interactive terminal performs bounded, lightweight
 reachability probes and opens a Bubble Tea inline selector. Probes may check DNS,
 connection establishment, TLS, and a small backend response; they must not run a
 bandwidth test.
@@ -184,11 +184,11 @@ JSON, redirected, and explicitly scripted commands never open the selector.
 They resolve a deterministic target list from command defaults and flags:
 
 ```text
-njuprobe run --targets LIST --family ipv4|ipv6|dual
-njuprobe domestic --targets LIST --family ipv4|dual
-njuprobe campus [--ipv4|--ipv6]
-njuprobe edge [--ipv4|--ipv6]
-njuprobe mlab
+soundprobe run --targets LIST --family ipv4|ipv6|dual
+soundprobe domestic --targets LIST --family ipv4|dual
+soundprobe campus [--ipv4|--ipv6]
+soundprobe edge [--ipv4|--ipv6]
+soundprobe mlab
 ```
 
 `--targets` accepts comma-separated station IDs. Invalid station IDs and
@@ -245,20 +245,20 @@ raw provider events.
 ## 8. Commands
 
 ```text
-njuprobe
-njuprobe run [--targets LIST] [--family ipv4|ipv6|dual] [--label TEXT] [--note TEXT] [--no-save]
-njuprobe campus [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
-njuprobe edge [--ipv4|--ipv6]  # reports terminal unsupported
-njuprobe domestic [--targets LIST] [--family ipv4|dual] [--label TEXT] [--note TEXT] [--no-save]
-njuprobe mlab [--label TEXT] [--note TEXT] [--no-save]
-njuprobe stations [--json]
-njuprobe history [--limit N]
-njuprobe last [--json]
-njuprobe show RUN_ID [--json]
-njuprobe export --format jsonl|csv --output PATH
-njuprobe consent status|accept|revoke
-njuprobe doctor [--json]
-njuprobe version
+soundprobe
+soundprobe run [--targets LIST] [--family ipv4|ipv6|dual] [--label TEXT] [--note TEXT] [--no-save]
+soundprobe campus [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
+soundprobe edge [--ipv4|--ipv6]  # reports terminal unsupported
+soundprobe domestic [--targets LIST] [--family ipv4|dual] [--label TEXT] [--note TEXT] [--no-save]
+soundprobe mlab [--label TEXT] [--note TEXT] [--no-save]
+soundprobe stations [--json]
+soundprobe history [--limit N]
+soundprobe last [--json]
+soundprobe show RUN_ID [--json]
+soundprobe export --format jsonl|csv --output PATH
+soundprobe consent status|accept|revoke
+soundprobe doctor [--json]
+soundprobe version
 ```
 
 ## 9. Consent and privacy
@@ -272,7 +272,7 @@ A plan without M-Lab never requires M-Lab consent. Noninteractive execution
 without current consent fails before contacting M-Lab. LibreSpeed telemetry and
 sharing are always disabled.
 
-NJUProbe has no own analytics, remote result service, geolocation enrichment, or
+SoundProbe has no own analytics, remote result service, geolocation enrichment, or
 ASN lookup.
 
 ## 10. Storage and export
@@ -280,7 +280,7 @@ ASN lookup.
 Store summaries under:
 
 ```text
-~/Library/Application Support/njuprobe/history/v1/<run-id>.json
+~/Library/Application Support/soundprobe/history/v1/<run-id>.json
 ```
 
 Directories are `0700`; files are `0600`. Use same-directory temporary files,
@@ -297,7 +297,7 @@ multi-station and dual-stack plans.
 
 Resolve helpers in this order:
 
-1. installed `../libexec/njuprobe` relative to the executable;
+1. installed `../libexec/soundprobe` relative to the executable;
 2. repository-local `.tools/bin`;
 3. documented developer PATH fallback.
 

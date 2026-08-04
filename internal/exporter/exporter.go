@@ -8,7 +8,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/soundadam/njuprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/model"
 )
 
 func Write(path, format string, summaries []model.RunSummary) error {

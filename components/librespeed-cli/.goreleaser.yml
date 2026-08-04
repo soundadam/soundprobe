@@ -1,0 +1,87 @@
+version: 2
+project_name: "librespeed-cli"
+before:
+  hooks:
+    - go mod download
+builds:
+  - main: ./main.go
+    id: upx
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -w -s -X "github.com/librespeed/speedtest-cli/defs.ProgName={{ .ProjectName }}" -X "github.com/librespeed/speedtest-cli/defs.ProgVersion=v{{ .Version }}" -X "github.com/librespeed/speedtest-cli/defs.BuildDate={{ .Date }}"
+    goos:
+      - linux
+      - darwin
+      - freebsd
+    goarch:
+      - "386"
+      - amd64
+      - arm
+      - arm64
+    goarm:
+      - "5"
+      - "6"
+      - "7"
+    ignore:
+      - goos: darwin
+        goarch: "386"
+      - goos: darwin
+        goarch: arm64
+  - main: ./main.go
+    id: no-upx
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -w -s -X "github.com/librespeed/speedtest-cli/defs.ProgName={{ .ProjectName }}" -X "github.com/librespeed/speedtest-cli/defs.ProgVersion=v{{ .Version }}" -X "github.com/librespeed/speedtest-cli/defs.BuildDate={{ .Date }}"
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - "386"
+      - amd64
+      - arm64
+      - mips
+      - mipsle
+      - mips64
+      - mips64le
+      - riscv64
+    gomips:
+      - hardfloat
+      - softfloat
+    ignore:
+      - goos: linux
+        goarch: "386"
+      - goos: linux
+        goarch: amd64
+      - goos: linux
+        goarch: arm64
+      - goos: darwin
+        goarch: "386"
+      - goos: darwin
+        goarch: amd64
+upx:
+  - ids: [upx]
+    compress: "9"
+    enabled: true
+archives:
+  - format_overrides:
+      - goos: windows
+        formats: ['zip']
+    files:
+      - LICENSE
+checksum:
+  name_template: "checksums.txt"
+changelog:
+  disable: false
+  sort: asc
+release:
+  github:
+    owner: librespeed
+    name: speedtest-cli
+  disable: false

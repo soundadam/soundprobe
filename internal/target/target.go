@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/soundadam/njuprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/model"
 )
 
 type Family string

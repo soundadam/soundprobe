@@ -1,11 +1,11 @@
-# NJUProbe
+# SoundProbe
 
 > Measure each network path for what it is. Do not hide different targets,
 > address families, or failure modes behind one synthetic speed score.
 
 ## Design principles
 
-NJUProbe separates **measurement intent** from the concrete server used to
+SoundProbe separates **measurement intent** from the concrete server used to
 perform the test:
 
 ```text
@@ -28,7 +28,7 @@ one durable, machine-readable summary
 
 The product follows several rules:
 
-- **Purpose before server.** People select a measurement purpose; NJUProbe
+- **Purpose before server.** People select a measurement purpose; SoundProbe
   maps it to a pinned, reviewed target definition.
 - **Explicit identity.** Station and address family remain visible in target
   IDs such as `nju-campus-ipv6` and `tongji-ipv4`.
@@ -49,8 +49,8 @@ The bare command first probes station availability and opens a multi-select
 plan editor:
 
 ```text
-$ njuprobe
-NJUProbe 0.2.0 · select measurement targets
+$ soundprobe
+SoundProbe 0.3.0 · select measurement targets
 Address family  ipv4   [4] IPv4  [6] IPv6  [d] dual
 
 › [ ] NJU Campus   NJU campus-internal path
@@ -73,7 +73,7 @@ Selected targets then receive equal, fixed-height progress panels. The example
 below shows one failed Campus target while M-Lab continues independently:
 
 ```text
-NJUProbe 0.2.0
+SoundProbe 0.3.0
 Network   utun6 · tunnel
 Order     NJU Campus · IPv4 → M-Lab · sequential
 
@@ -94,7 +94,7 @@ Ctrl-C    cancel
 When the run ends, the dynamic block is replaced by one durable summary:
 
 ```text
-NJUProbe 0.2.0 · partial · 29.7s
+SoundProbe 0.3.0 · partial · 29.7s
 Run 7e98fa57-f4c8-4883-959f-4d5c5e58916d
 Network utun6 · tunnel
 TARGET             METHOD                   DOWNLOAD    UPLOAD     SERVER       STATUS
@@ -103,7 +103,7 @@ M-Lab              ndt7-single-stream       33.67 Mbps  4.75 Mbps  ndt-mlab3… 
 NJU Campus · IPv4 error [connect/server_unreachable]: server did not produce a measurement
 ```
 
-NJUProbe is a macOS-first, terminal-first network measurement tool. It measures
+SoundProbe is a macOS-first, terminal-first network measurement tool. It measures
 explicit, independent targets sequentially so they do not compete for bandwidth:
 
 - **NJU Campus** — the path to NJU's campus-internal LibreSpeed service;
@@ -111,7 +111,7 @@ explicit, independent targets sequentially so they do not compete for bandwidth:
 - **M-Lab** — a general Internet NDT7 measurement with automatic server selection;
 - **Domestic stations** — pinned CERNET, QLU, and Tongji LibreSpeed services.
 
-These targets answer different questions. NJUProbe never substitutes one for
+These targets answer different questions. SoundProbe never substitutes one for
 another, silently changes address family, or collapses their results into a
 synthetic score.
 
@@ -119,15 +119,15 @@ synthetic score.
 
 ```sh
 brew tap soundadam/tap
-brew install njuprobe
-njuprobe doctor
+brew install soundprobe
+soundprobe doctor
 ```
 
 M-Lab publishes measurement data, including the ISP-provided public IP address.
 Accept its policy once before selecting M-Lab:
 
 ```sh
-njuprobe consent accept
+soundprobe consent accept
 ```
 
 ## Interactive use
@@ -135,10 +135,10 @@ njuprobe consent accept
 Run the bare command in a terminal:
 
 ```sh
-njuprobe
+soundprobe
 ```
 
-NJUProbe performs short reachability probes and opens a Bubble Tea selector:
+SoundProbe performs short reachability probes and opens a Bubble Tea selector:
 
 ```text
 ↑/↓ or j/k   move
@@ -164,18 +164,18 @@ stations are displayed but disabled with an explanation. Selecting `dual`
 expands a supported dual-stack station into two independent measurements.
 
 During execution every target has the same four-row panel: status, animated
-activity, download/upload rates, and server or failure detail. LibreSpeed targets
-use an honest indeterminate activity bar because their helper has no stable live
-rate stream. M-Lab adds transient live rates from NDT7 events. The renderer stays
-inline rather than using the alternate screen, then leaves one durable summary.
+activity, download/upload rates, and server or failure detail. The maintained
+LibreSpeed helper and M-Lab NDT7 events both provide transient live rates. The
+renderer stays inline rather than using the alternate screen, then leaves one
+durable summary.
 
 ## Script and batch use
 
 Noninteractive and JSON commands never open the selector:
 
 ```sh
-njuprobe run --targets nju-campus,mlab --family ipv4 --no-save --json
-njuprobe domestic --targets cernet,qlu,tongji --family ipv4 --no-save --json
+soundprobe run --targets nju-campus,mlab --family ipv4 --no-save --json
+soundprobe domestic --targets cernet,qlu,tongji --family ipv4 --no-save --json
 ```
 
 Supported station IDs:
@@ -192,12 +192,12 @@ tongji       Tongji University LibreSpeed, IPv4
 Compatibility commands remain available:
 
 ```text
-njuprobe campus                  NJU Campus IPv4
-njuprobe campus --ipv6           NJU Campus IPv6 only
-njuprobe edge                    Explain that NJU Edge is browser-protected and unavailable in terminal mode
-njuprobe mlab                    M-Lab only
-njuprobe domestic                CERNET, QLU, then Tongji over IPv4
-njuprobe stations                Probe and list station availability
+soundprobe campus                  NJU Campus IPv4
+soundprobe campus --ipv6           NJU Campus IPv6 only
+soundprobe edge                    Explain that NJU Edge is browser-protected and unavailable in terminal mode
+soundprobe mlab                    M-Lab only
+soundprobe domestic                CERNET, QLU, then Tongji over IPv4
+soundprobe stations                Probe and list station availability
 ```
 
 Global `--json` emits exactly one JSON document. Redirected plain output never
@@ -211,11 +211,11 @@ target. Provider IDs include station and family, such as
 hiding them behind a generic Campus label.
 
 ```sh
-njuprobe last
-njuprobe history --limit 10
-njuprobe show RUN_ID --json
-njuprobe export --format jsonl --output /tmp/njuprobe.jsonl
-njuprobe export --format csv --output /tmp/njuprobe.csv
+soundprobe last
+soundprobe history --limit 10
+soundprobe show RUN_ID --json
+soundprobe export --format jsonl --output /tmp/soundprobe.jsonl
+soundprobe export --format csv --output /tmp/soundprobe.csv
 ```
 
 JSONL preserves one complete summary per line. CSV is normalized to one row per
@@ -225,20 +225,21 @@ Local files are written atomically with directory mode `0700` and file mode
 `0600` under:
 
 ```text
-~/Library/Application Support/njuprobe/history/v1/
+~/Library/Application Support/soundprobe/history/v1/
 ```
 
-Existing schema-v1 history from NJUProbe 0.1 remains readable.
+Existing schema-v1 history and M-Lab consent under the legacy `njuprobe`
+Application Support directory remain readable after the rename.
 
 ## Development
 
-NJUProbe and the pinned helpers require Go 1.25.8 or newer.
+SoundProbe and the pinned helpers require Go 1.25.8 or newer.
 
 ```sh
 make test-offline
 make tools
 make build
-./bin/njuprobe doctor --json
+./bin/soundprobe doctor --json
 ```
 
 Routine tests use mock helpers and sanitized fixtures; they do not run real
@@ -248,16 +249,17 @@ listed in [TESTING.md](TESTING.md). Release and Homebrew gates are documented in
 
 ## Privacy and independence
 
-NJUProbe has no analytics, cloud synchronization, daemon, scheduler, ASN
+SoundProbe has no analytics, cloud synchronization, daemon, scheduler, ASN
 enrichment, or geolocation lookup. LibreSpeed telemetry and sharing are disabled.
 M-Lab remains governed by its own privacy policy and requires explicit consent.
 
-NJUProbe is independent of soundVPN, SFM, and NJUConnect. It observes the route
+SoundProbe is independent of soundVPN, SFM, and NJUConnect. It observes the route
 selected by macOS but does not inspect or modify those products' private
 configuration.
 
 ## License
 
-NJUProbe's source is MIT licensed. LibreSpeed CLI and ndt7-client remain separate
-helper executables under their upstream licenses. See
+SoundProbe's application source is MIT licensed. The maintained LibreSpeed
+component and ndt7-client remain separate helper executables under their
+respective upstream licenses. See
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/soundadam/njuprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/model"
 )
 
 type fakeMeasurementProvider struct {

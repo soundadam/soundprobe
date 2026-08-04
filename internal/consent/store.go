@@ -35,7 +35,16 @@ func DefaultPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory: %w", err)
 	}
-	return filepath.Join(home, "Library", "Application Support", "njuprobe", "consent.json"), nil
+	applicationSupport := filepath.Join(home, "Library", "Application Support")
+	current := filepath.Join(applicationSupport, "soundprobe", "consent.json")
+	legacy := filepath.Join(applicationSupport, "njuprobe", "consent.json")
+	if _, err := os.Stat(current); err == nil {
+		return current, nil
+	}
+	if _, err := os.Stat(legacy); err == nil {
+		return legacy, nil
+	}
+	return current, nil
 }
 
 func (store *Store) Status() (Record, bool, error) {
