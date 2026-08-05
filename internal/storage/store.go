@@ -24,13 +24,12 @@ func New(historyDir string) *Store {
 }
 
 func DefaultHistoryDir() (string, error) {
-	home, err := os.UserHomeDir()
+	configDir, err := os.UserConfigDir()
 	if err != nil {
-		return "", fmt.Errorf("resolve home directory: %w", err)
+		return "", fmt.Errorf("resolve user config directory: %w", err)
 	}
-	applicationSupport := filepath.Join(home, "Library", "Application Support")
-	current := filepath.Join(applicationSupport, "soundprobe", "history", "v1")
-	legacy := filepath.Join(applicationSupport, "njuprobe", "history", "v1")
+	current := filepath.Join(configDir, "soundprobe", "history", "v1")
+	legacy := filepath.Join(configDir, "njuprobe", "history", "v1")
 	return preferExistingPath(current, legacy), nil
 }
 

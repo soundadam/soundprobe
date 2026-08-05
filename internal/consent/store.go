@@ -31,13 +31,12 @@ func New(path string) *Store {
 }
 
 func DefaultPath() (string, error) {
-	home, err := os.UserHomeDir()
+	configDir, err := os.UserConfigDir()
 	if err != nil {
-		return "", fmt.Errorf("resolve home directory: %w", err)
+		return "", fmt.Errorf("resolve user config directory: %w", err)
 	}
-	applicationSupport := filepath.Join(home, "Library", "Application Support")
-	current := filepath.Join(applicationSupport, "soundprobe", "consent.json")
-	legacy := filepath.Join(applicationSupport, "njuprobe", "consent.json")
+	current := filepath.Join(configDir, "soundprobe", "consent.json")
+	legacy := filepath.Join(configDir, "njuprobe", "consent.json")
 	if _, err := os.Stat(current); err == nil {
 		return current, nil
 	}

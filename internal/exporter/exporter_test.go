@@ -57,6 +57,9 @@ func TestWriteCSVPreservesNullAsEmpty(t *testing.T) {
 	if records[1][7] != string(model.ProviderCampus) {
 		t.Fatalf("target = %q", records[1][7])
 	}
+	if records[0][len(records[0])-5] != "server_id" || records[0][len(records[0])-1] != "download_responsiveness_rpm" {
+		t.Fatalf("new metadata headers missing: %#v", records[0])
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)

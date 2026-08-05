@@ -11,6 +11,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/soundadam/soundprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/preferences"
 	"github.com/soundadam/soundprobe/internal/target"
 )
 
@@ -27,13 +29,27 @@ type selectorModel struct {
 	done      bool
 	cancelled bool
 	errorText string
+	language  preferences.Language
 }
 
 func SelectPlan(ctx context.Context, input io.Reader, output io.Writer, version string) (target.Plan, error) {
+	return selectPlan(ctx, input, output, version, preferences.Config{})
+}
+
+func SelectPlanConfigured(ctx context.Context, input io.Reader, output io.Writer, version string, config preferences.Config) (target.Plan, error) {
+	return selectPlan(ctx, input, output, version, config)
+}
+
+func selectPlan(ctx context.Context, input io.Reader, output io.Writer, version string, config preferences.Config) (target.Plan, error) {
 	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	probes := target.ProbeAll(probeCtx, 1500*time.Millisecond)
+	var probes []target.ProbeResult
+	if config.Validate() == nil {
+		probes = target.ProbeSelected(probeCtx, config.DailyStations, 1500*time.Millisecond)
+	} else {
+		probes = target.ProbeAll(probeCtx, 1500*time.Millisecond)
+	}
 	cancel()
-	model := newSelectorModel(version, probes)
+	model := newSelectorModelConfigured(version, probes, config)
 	program := tea.NewProgram(
 		model,
 		tea.WithContext(ctx),
@@ -58,16 +74,37 @@ func SelectPlan(ctx context.Context, input io.Reader, output io.Writer, version 
 }
 
 func newSelectorModel(version string, probeResults []target.ProbeResult) *selectorModel {
+	return newSelectorModelConfigured(version, probeResults, preferences.Config{})
+}
+
+func newSelectorModelConfigured(version string, probeResults []target.ProbeResult, config preferences.Config) *selectorModel {
 	probes := make(map[string]target.ProbeResult, len(probeResults))
 	for _, result := range probeResults {
 		probes[probeKey(result.StationID, result.Family)] = result
 	}
+	stations := target.Stations()
+	language := preferences.LanguageEnglish
+	if config.Validate() == nil {
+		language = config.Language
+		allowed := map[string]bool{}
+		for _, id := range config.DailyStations {
+			allowed[id] = true
+		}
+		filtered := make([]target.Station, 0, len(allowed))
+		for _, station := range stations {
+			if allowed[station.ID] {
+				filtered = append(filtered, station)
+			}
+		}
+		stations = filtered
+	}
 	model := &selectorModel{
 		version:  version,
-		stations: target.Stations(),
+		stations: stations,
 		probes:   probes,
 		family:   target.FamilyIPv4,
 		selected: map[string]bool{},
+		language: language,
 	}
 	model.applyRecommendation()
 	return model
@@ -97,7 +134,7 @@ func (selector *selectorModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if selector.stationSupported(station, selector.family) {
 			selector.selected[station.ID] = !selector.selected[station.ID]
 		} else {
-			selector.errorText = station.Label + " does not support " + string(selector.family)
+			selector.errorText = selector.text(station.Label+" 不支持 "+string(selector.family), station.Label+" does not support "+string(selector.family))
 		}
 	case "a":
 		selector.applyRecommendation()
@@ -110,7 +147,7 @@ func (selector *selectorModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case "enter":
 		ids := selector.selectedIDs()
 		if len(ids) == 0 {
-			selector.errorText = "select at least one measurement target"
+			selector.errorText = selector.text("请至少选择一个测速站", "select at least one measurement target")
 			return selector, nil
 		}
 		plan, err := target.NewPlan(ids, selector.family)
@@ -133,8 +170,8 @@ func (selector *selectorModel) View() tea.View {
 		return tea.NewView("")
 	}
 	lines := []string{
-		fmt.Sprintf("SoundProbe %s · select measurement targets", selector.version),
-		fmt.Sprintf("Address family  %s   [4] IPv4  [6] IPv6  [d] dual", selector.family),
+		fmt.Sprintf("soundprobe %s · %s", selector.version, selector.text("选择测速站", "select measurement targets")),
+		fmt.Sprintf("%s  %s   [4] IPv4  [6] IPv6  [d] dual", selector.text("地址族", "Address family"), selector.family),
 		"",
 	}
 	for index, station := range selector.stations {
@@ -150,14 +187,19 @@ func (selector *selectorModel) View() tea.View {
 			check = "[-]"
 		}
 		status := selector.stationStatus(station)
+		description := station.Description
+		if selector.language == preferences.LanguageChinese {
+			description = station.DescriptionZH
+		}
 		lines = append(lines,
-			fmt.Sprintf("%s%s %-12s %s", cursor, check, station.Label, truncateRunes(station.Description, 44)),
+			fmt.Sprintf("%s%s %-12s %s", cursor, check, station.Label, truncateRunes(description, 44)),
 			fmt.Sprintf("      %s", truncateRunes(status, 68)),
 		)
 	}
 	lines = append(lines,
 		"",
-		"↑/↓ move   Space toggle   a recommended   Enter start   q cancel",
+		selector.text("↑/↓ 移动   Space 选择   a 推荐   Enter 开始   q 取消", "↑/↓ move   Space toggle   a recommended   Enter start   q cancel"),
+		selector.text("修改日常站点：soundprobe setup", "Change daily stations: soundprobe setup"),
 	)
 	if selector.errorText != "" {
 		lines = append(lines, "Error: "+selector.errorText)
@@ -185,17 +227,32 @@ func (selector *selectorModel) setFamily(family target.Family) {
 }
 
 func (selector *selectorModel) applyRecommendation() {
-	selector.selected = map[string]bool{"mlab": true}
-	campusReachable := false
-	if selector.family == target.FamilyDual {
-		campusReachable = selector.reachable("nju-campus", "ipv4") || selector.reachable("nju-campus", "ipv6")
-	} else {
-		campusReachable = selector.reachable("nju-campus", string(selector.family))
-	}
-	if campusReachable {
-		selector.selected["nju-campus"] = true
+	selector.selected = map[string]bool{}
+	for _, station := range selector.stations {
+		if !selector.stationSupported(station, selector.family) {
+			continue
+		}
+		// Keep the daily recommendation education-network first: NJU Campus
+		// when reachable, plus the automatic public references M-Lab and Apple.
+		if station.ID == "nju-campus" && selector.stationReachable(station) {
+			selector.selected[station.ID] = true
+			continue
+		}
+		if station.MLab || station.AutoProvider == model.ProviderApple {
+			selector.selected[station.ID] = true
+		}
 	}
 	selector.setFamily(selector.family)
+}
+
+func (selector *selectorModel) stationReachable(station target.Station) bool {
+	if station.MLab || station.AutoProvider != "" {
+		return true
+	}
+	if selector.family == target.FamilyDual {
+		return selector.reachable(station.ID, "ipv4") || selector.reachable(station.ID, "ipv6")
+	}
+	return selector.reachable(station.ID, string(selector.family))
 }
 
 func (selector *selectorModel) reachable(stationID, family string) bool {
@@ -204,10 +261,10 @@ func (selector *selectorModel) reachable(stationID, family string) bool {
 }
 
 func (selector *selectorModel) stationSupported(station target.Station, family target.Family) bool {
-	if !station.TerminalSupported {
+	if !station.TerminalSupported || !target.PlatformAvailable(station) {
 		return false
 	}
-	if station.MLab {
+	if station.MLab || station.AutoProvider != "" {
 		return true
 	}
 	switch family {
@@ -224,10 +281,20 @@ func (selector *selectorModel) stationSupported(station target.Station, family t
 
 func (selector *selectorModel) stationStatus(station target.Station) string {
 	if !station.TerminalSupported {
-		return "terminal unsupported · " + station.UnsupportedReason
+		return selector.text("终端不支持 · ", "terminal unsupported · ") + station.UnsupportedReason
 	}
-	if station.MLab {
-		return "automatic node"
+	if !target.PlatformAvailable(station) {
+		return selector.text("当前系统不可用 · 仅 macOS", "unavailable on this OS · macOS only")
+	}
+	if station.MLab || station.AutoProvider != "" {
+		switch station.AutoProvider {
+		case model.ProviderApple:
+			return selector.text("macOS 内置 networkQuality", "macOS built-in networkQuality")
+		case model.ProviderOokla:
+			return selector.text("需要官方 Ookla CLI", "requires official Ookla CLI")
+		default:
+			return selector.text("自动选择节点", "automatic node")
+		}
 	}
 	families := []string{}
 	switch selector.family {
@@ -261,6 +328,13 @@ func (selector *selectorModel) stationStatus(station target.Station) string {
 	}
 	sort.Strings(parts)
 	return strings.Join(parts, " · ")
+}
+
+func (selector *selectorModel) text(chinese, english string) string {
+	if selector.language == preferences.LanguageChinese {
+		return chinese
+	}
+	return english
 }
 
 func probeKey(stationID, family string) string {

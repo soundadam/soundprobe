@@ -1,0 +1,11 @@
+{
+  "type": "result",
+  "timestamp": "2026-08-05T00:00:00Z",
+  "ping": {"jitter": 1.25, "latency": 8.5, "low": 7.2, "high": 10.1},
+  "download": {"bandwidth": 6250000, "bytes": 100000000, "elapsed": 16000},
+  "upload": {"bandwidth": 1250000, "bytes": 20000000, "elapsed": 16000},
+  "packetLoss": 0.0,
+  "interface": {"internalIp": "192.0.2.10", "name": "utun6", "macAddr": "00:00:00:00:00:00", "isVpn": true, "externalIp": "198.51.100.42"},
+  "server": {"id": 30852, "host": "speedtest.dukekunshan.edu.cn:8080", "port": 8080, "name": "Duke Kunshan University", "location": "Kunshan", "country": "China", "ip": "180.208.59.230", "sponsor": "Duke Kunshan University"},
+  "result": {"id": "abc", "url": "https://www.speedtest.net/result/abc", "persisted": true}
+}

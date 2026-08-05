@@ -13,6 +13,7 @@ import (
 
 	"github.com/soundadam/soundprobe/internal/consent"
 	"github.com/soundadam/soundprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/preferences"
 	"github.com/soundadam/soundprobe/internal/provider"
 	"github.com/soundadam/soundprobe/internal/storage"
 	"github.com/soundadam/soundprobe/internal/target"
@@ -23,6 +24,15 @@ type fakeRunner struct {
 	preflightErr error
 	summary      model.RunSummary
 	err          error
+}
+
+type preparingFakeRunner struct {
+	fakeRunner
+}
+
+func (runner *preparingFakeRunner) Prepare(_ context.Context, request provider.Request) (provider.Request, error) {
+	request.Targets = []model.Provider{model.ProviderNJUCampusIPv4, model.ProviderMLab}
+	return request, nil
 }
 
 type fakeProgressRenderer struct {
@@ -80,6 +90,67 @@ func TestBareCommandRunsBothProvidersAfterConsent(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "NJU Campus · IPv4") || !strings.Contains(stdout.String(), "M-Lab") {
 		t.Fatalf("summary output missing targets: %q", stdout.String())
+	}
+}
+
+func TestRunDefaultsToCampusMLabAndApple(t *testing.T) {
+	providers := []model.Provider{model.ProviderNJUCampusIPv4, model.ProviderMLab, model.ProviderApple}
+	runner := &fakeRunner{summary: summaryForProviders(model.CommandRun, providers)}
+	app, _, stderr := newTestApp(t, runner)
+	if _, err := app.Consent.Accept(app.Version, app.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if exitCode := app.Execute(context.Background(), []string{"run", "--no-save"}); exitCode != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	if got := fmt.Sprint(runner.request.Targets); got != fmt.Sprint(providers) {
+		t.Fatalf("targets = %s, want %s", got, providers)
+	}
+}
+
+func TestCombinedRunContinuesWhenOptionalTargetIsRemoved(t *testing.T) {
+	providers := []model.Provider{model.ProviderNJUCampusIPv4, model.ProviderMLab}
+	runner := &preparingFakeRunner{fakeRunner: fakeRunner{summary: summaryForProviders(model.CommandRun, providers)}}
+	app, _, stderr := newTestApp(t, runner)
+	if _, err := app.Consent.Accept(app.Version, app.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if exitCode := app.Execute(context.Background(), []string{"run", "--targets", "nju-campus,mlab,ookla", "--no-save"}); exitCode != 0 {
+		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
+	}
+	if got := fmt.Sprint(runner.request.Targets); got != fmt.Sprint(providers) {
+		t.Fatalf("targets = %s, want %s", got, providers)
+	}
+	if !strings.Contains(stderr.String(), "Ookla Speedtest") {
+		t.Fatalf("stderr did not explain removed optional target: %q", stderr.String())
+	}
+}
+
+func TestAppleAndOoklaCommandsResolveAutomaticProviders(t *testing.T) {
+	for _, test := range []struct {
+		command  string
+		provider model.Provider
+	}{
+		{command: "apple", provider: model.ProviderApple},
+		{command: "ookla", provider: model.ProviderOokla},
+	} {
+		t.Run(test.command, func(t *testing.T) {
+			providers := []model.Provider{test.provider}
+			runner := &fakeRunner{summary: summaryForProviders(model.CommandRun, providers)}
+			app, _, stderr := newTestApp(t, runner)
+			if test.provider == model.ProviderOokla {
+				// This command has no M-Lab dependency, but keep the explicit
+				// branch here so the test documents that both automatic helpers
+				// are independent of M-Lab consent.
+				app.StdinTTY = false
+			}
+			if exitCode := app.Execute(context.Background(), []string{test.command, "--no-save"}); exitCode != 0 {
+				t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
+			}
+			if len(runner.request.Targets) != 1 || runner.request.Targets[0] != test.provider {
+				t.Fatalf("targets = %#v", runner.request.Targets)
+			}
+		})
 	}
 }
 
@@ -221,14 +292,18 @@ func TestDoctorReportsReadyProviders(t *testing.T) {
 		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
 	}
 	var payload struct {
-		Ready     bool              `json:"ready"`
-		Providers map[string]string `json:"providers"`
+		Ready             bool              `json:"ready"`
+		Providers         map[string]string `json:"providers"`
+		OptionalProviders map[string]string `json:"optionalProviders"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
 		t.Fatal(err)
 	}
 	if !payload.Ready || payload.Providers["campus"] != "ready" || payload.Providers["mlab"] != "ready" {
 		t.Fatalf("payload = %#v", payload)
+	}
+	if payload.OptionalProviders["apple"] != "ready" || payload.OptionalProviders["ookla"] != "ready" {
+		t.Fatalf("optional providers = %#v", payload.OptionalProviders)
 	}
 }
 
@@ -293,6 +368,36 @@ func TestBareTTYUsesSelectorPlan(t *testing.T) {
 	}
 }
 
+func TestBareTTYRunsOnboardingOnceAndUsesDailyStations(t *testing.T) {
+	providers := []model.Provider{model.ProviderTongjiIPv4}
+	runner := &fakeRunner{summary: summaryForProviders(model.CommandRun, providers)}
+	app, _, stderr := newTestApp(t, runner)
+	app.StdoutTTY = true
+	app.Preferences = preferences.New(filepath.Join(t.TempDir(), "preferences.json"))
+	setupCalls := 0
+	app.SetupFactory = func(context.Context, io.Reader, io.Writer, string, preferences.Config) (preferences.Config, error) {
+		setupCalls++
+		return preferences.Config{SchemaVersion: preferences.SchemaVersion, Language: preferences.LanguageChinese, DailyStations: []string{"tongji"}}, nil
+	}
+	app.ConfiguredSelectorFactory = func(_ context.Context, _ io.Reader, _ io.Writer, _ string, config preferences.Config) (target.Plan, error) {
+		if config.Language != preferences.LanguageChinese || fmt.Sprint(config.DailyStations) != "[tongji]" {
+			t.Fatalf("config = %#v", config)
+		}
+		return target.Plan{StationIDs: []string{"tongji"}, Family: target.FamilyIPv4, Providers: providers}, nil
+	}
+	app.ProgressFactory = func(io.Writer, string, []model.Provider) (progressRenderer, error) {
+		return &fakeProgressRenderer{}, nil
+	}
+	for run := 0; run < 2; run++ {
+		if exitCode := app.Execute(context.Background(), nil); exitCode != 0 {
+			t.Fatalf("run %d exit code = %d, stderr = %q", run, exitCode, stderr.String())
+		}
+	}
+	if setupCalls != 1 {
+		t.Fatalf("setup calls = %d, want 1", setupCalls)
+	}
+}
+
 func TestRunTargetAndFamilyFlagsExpandDeterministically(t *testing.T) {
 	providers := []model.Provider{model.ProviderNJUCampusIPv4, model.ProviderNJUCampusIPv6, model.ProviderQLUIPv4}
 	runner := &fakeRunner{summary: summaryForProviders(model.CommandRun, providers)}
@@ -306,8 +411,8 @@ func TestRunTargetAndFamilyFlagsExpandDeterministically(t *testing.T) {
 	}
 }
 
-func TestDomesticDefaultsToThreeIPv4Stations(t *testing.T) {
-	providers := []model.Provider{model.ProviderCERNETIPv4, model.ProviderQLUIPv4, model.ProviderTongjiIPv4}
+func TestDomesticDefaultsToUsableIPv4Stations(t *testing.T) {
+	providers := []model.Provider{model.ProviderTongjiIPv4, model.ProviderQLUIPv4}
 	runner := &fakeRunner{summary: summaryForProviders(model.CommandDomestic, providers)}
 	app, _, stderr := newTestApp(t, runner)
 	if exitCode := app.Execute(context.Background(), []string{"domestic", "--no-save"}); exitCode != 0 {

@@ -1,0 +1,12 @@
+{
+  "base_rtt": 11.25,
+  "dl_flows": 16,
+  "dl_responsiveness": 420.5,
+  "dl_throughput": 125000000.0,
+  "ul_flows": 8,
+  "ul_responsiveness": 380.25,
+  "ul_throughput": 25000000.0,
+  "responsiveness": 400.375,
+  "interface_name": "utun6",
+  "os_version": "Version 15.6"
+}

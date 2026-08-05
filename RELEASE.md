@@ -1,4 +1,4 @@
-# Releasing SoundProbe through Homebrew
+# Releasing soundprobe through Homebrew
 
 The release path is intentionally staged:
 
@@ -49,7 +49,7 @@ For version `0.3.0`:
 ```sh
 git switch main
 git pull --ff-only
-git tag -a v0.3.0 -m "SoundProbe v0.3.0"
+git tag -a v0.3.0 -m "soundprobe v0.3.0"
 git push origin v0.3.0
 ```
 
@@ -171,7 +171,7 @@ Formula. A future submission should demonstrate:
 - checksummed and locked source dependencies;
 - meaningful offline Formula tests;
 - no runtime downloads or self-updates;
-- clear licensing for SoundProbe and both installed helper executables.
+- clear licensing for soundprobe and both installed helper executables.
 
 Until then, the supported installation command is through
 `soundadam/homebrew-tap`.

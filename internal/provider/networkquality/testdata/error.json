@@ -1,0 +1,5 @@
+{
+  "error_code": "network_unavailable",
+  "error_domain": "NetworkQuality",
+  "error": "the test server could not be reached"
+}

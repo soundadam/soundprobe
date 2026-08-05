@@ -16,6 +16,8 @@ const (
 	CommandEdge     Command = "edge"
 	CommandDomestic Command = "domestic"
 	CommandMLab     Command = "mlab"
+	CommandApple    Command = "apple"
+	CommandOokla    Command = "ookla"
 )
 
 type Provider string
@@ -32,11 +34,15 @@ const (
 	ProviderCERNETIPv4    Provider = "cernet-ipv4"
 	ProviderQLUIPv4       Provider = "qlu-ipv4"
 	ProviderTongjiIPv4    Provider = "tongji-ipv4"
+	ProviderApple         Provider = "apple-networkquality"
+	ProviderOokla         Provider = "ookla-speedtest"
 )
 
 const (
 	MethodLibreSpeedThreeStream = "librespeed-three-stream"
 	MethodNDT7SingleStream      = "ndt7-single-stream"
+	MethodAppleNetworkQuality   = "apple-networkquality"
+	MethodOoklaSpeedtest        = "ookla-speedtest"
 )
 
 type RunStatus string
@@ -89,24 +95,29 @@ type NetworkContext struct {
 }
 
 type Measurement struct {
-	Provider       Provider       `json:"provider"`
-	Method         string         `json:"method"`
-	Status         ProviderStatus `json:"status"`
-	IPFamily       *string        `json:"ipFamily"`
-	ServerName     *string        `json:"serverName"`
-	ServerFQDN     *string        `json:"serverFqdn"`
-	ServerAddress  *string        `json:"serverAddress"`
-	ClientPublicIP *string        `json:"clientPublicIp"`
-	PingMS         *float64       `json:"pingMs"`
-	JitterMS       *float64       `json:"jitterMs"`
-	DownloadMbps   *float64       `json:"downloadMbps"`
-	UploadMbps     *float64       `json:"uploadMbps"`
-	DownloadBytes  *int64         `json:"downloadBytes"`
-	UploadBytes    *int64         `json:"uploadBytes"`
-	DurationMS     *int64         `json:"durationMs"`
-	Concurrency    *int           `json:"concurrency"`
-	HelperVersion  *string        `json:"helperVersion"`
-	Failure        *Failure       `json:"failure,omitempty"`
+	Provider                  Provider       `json:"provider"`
+	Method                    string         `json:"method"`
+	Status                    ProviderStatus `json:"status"`
+	IPFamily                  *string        `json:"ipFamily"`
+	ServerName                *string        `json:"serverName"`
+	ServerFQDN                *string        `json:"serverFqdn"`
+	ServerAddress             *string        `json:"serverAddress"`
+	ServerID                  *int64         `json:"serverId,omitempty"`
+	ServerSponsor             *string        `json:"serverSponsor,omitempty"`
+	ClientPublicIP            *string        `json:"clientPublicIp"`
+	PingMS                    *float64       `json:"pingMs"`
+	JitterMS                  *float64       `json:"jitterMs"`
+	ResponsivenessRPM         *float64       `json:"responsivenessRpm,omitempty"`
+	UploadResponsivenessRPM   *float64       `json:"uploadResponsivenessRpm,omitempty"`
+	DownloadResponsivenessRPM *float64       `json:"downloadResponsivenessRpm,omitempty"`
+	DownloadMbps              *float64       `json:"downloadMbps"`
+	UploadMbps                *float64       `json:"uploadMbps"`
+	DownloadBytes             *int64         `json:"downloadBytes"`
+	UploadBytes               *int64         `json:"uploadBytes"`
+	DurationMS                *int64         `json:"durationMs"`
+	Concurrency               *int           `json:"concurrency"`
+	HelperVersion             *string        `json:"helperVersion"`
+	Failure                   *Failure       `json:"failure,omitempty"`
 }
 
 type RunSummary struct {
@@ -187,7 +198,7 @@ func (summary RunSummary) Validate() error {
 
 func (command Command) valid() bool {
 	switch command {
-	case CommandRun, CommandCampus, CommandEdge, CommandDomestic, CommandMLab:
+	case CommandRun, CommandCampus, CommandEdge, CommandDomestic, CommandMLab, CommandApple, CommandOokla:
 		return true
 	default:
 		return false
@@ -223,6 +234,10 @@ func (command Command) expectedProviders() map[Provider]struct{} {
 		return map[Provider]struct{}{ProviderCERNETIPv4: {}, ProviderQLUIPv4: {}, ProviderTongjiIPv4: {}}
 	case CommandRun:
 		return map[Provider]struct{}{ProviderCampus: {}, ProviderMLab: {}}
+	case CommandApple:
+		return map[Provider]struct{}{ProviderApple: {}}
+	case CommandOokla:
+		return map[Provider]struct{}{ProviderOokla: {}}
 	default:
 		return nil
 	}
@@ -238,7 +253,9 @@ func ProviderValid(provider Provider) bool {
 		ProviderNJUEdgeIPv6,
 		ProviderCERNETIPv4,
 		ProviderQLUIPv4,
-		ProviderTongjiIPv4:
+		ProviderTongjiIPv4,
+		ProviderApple,
+		ProviderOokla:
 		return true
 	default:
 		return false
@@ -258,6 +275,10 @@ func ProviderMethod(provider Provider) string {
 		return MethodLibreSpeedThreeStream
 	case ProviderMLab:
 		return MethodNDT7SingleStream
+	case ProviderApple:
+		return MethodAppleNetworkQuality
+	case ProviderOokla:
+		return MethodOoklaSpeedtest
 	default:
 		return ""
 	}
@@ -294,6 +315,15 @@ func (measurement Measurement) validateValues() error {
 	if err := validateNonnegative("jitter milliseconds", measurement.JitterMS); err != nil {
 		return err
 	}
+	if err := validateNonnegative("responsiveness RPM", measurement.ResponsivenessRPM); err != nil {
+		return err
+	}
+	if err := validateNonnegative("upload responsiveness RPM", measurement.UploadResponsivenessRPM); err != nil {
+		return err
+	}
+	if err := validateNonnegative("download responsiveness RPM", measurement.DownloadResponsivenessRPM); err != nil {
+		return err
+	}
 	if err := validateNonnegativeInt64("download bytes", measurement.DownloadBytes); err != nil {
 		return err
 	}
@@ -305,6 +335,9 @@ func (measurement Measurement) validateValues() error {
 	}
 	if measurement.Concurrency != nil && *measurement.Concurrency <= 0 {
 		return errors.New("concurrency must be positive")
+	}
+	if measurement.ServerID != nil && *measurement.ServerID < 0 {
+		return errors.New("server ID must be non-negative")
 	}
 	if measurement.IPFamily != nil && *measurement.IPFamily != "ipv4" && *measurement.IPFamily != "ipv6" {
 		return fmt.Errorf("invalid IP family %q", *measurement.IPFamily)

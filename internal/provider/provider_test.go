@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -81,6 +82,65 @@ func TestSummaryRunnerRunsProvidersSequentially(t *testing.T) {
 	}
 }
 
+func TestSummaryRunnerIncludesConfiguredAppleInDefaultRun(t *testing.T) {
+	campus := &fakeMeasurementProvider{measurement: successfulMeasurement(model.ProviderCampus)}
+	mlab := &fakeMeasurementProvider{measurement: successfulMeasurement(model.ProviderMLab)}
+	apple := &fakeMeasurementProvider{measurement: successfulMeasurement(model.ProviderApple)}
+	runner := testSummaryRunner(campus, mlab)
+	runner.Apple = apple
+	summary, err := runner.Run(context.Background(), Request{Command: model.CommandRun})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []model.Provider{model.ProviderCampus, model.ProviderMLab, model.ProviderApple}
+	if len(summary.Targets) != len(want) || len(summary.Measurements) != len(want) {
+		t.Fatalf("summary = %#v", summary)
+	}
+	for index := range want {
+		if summary.Targets[index] != want[index] || summary.Measurements[index].Provider != want[index] {
+			t.Fatalf("target[%d] = %q/%q, want %q", index, summary.Targets[index], summary.Measurements[index].Provider, want[index])
+		}
+	}
+}
+
+func TestSummaryRunnerPrepareDropsUnavailableOptionalProvider(t *testing.T) {
+	campus := &fakeMeasurementProvider{measurement: successfulMeasurement(model.ProviderCampus)}
+	mlab := &fakeMeasurementProvider{measurement: successfulMeasurement(model.ProviderMLab)}
+	apple := &preflightMeasurementProvider{
+		fakeMeasurementProvider: fakeMeasurementProvider{measurement: successfulMeasurement(model.ProviderApple)},
+		preflightErr:            fmt.Errorf("%w: Apple networkQuality is available on macOS only", ErrUnavailable),
+	}
+	runner := testSummaryRunner(campus, mlab)
+	runner.Apple = apple
+	prepared, err := runner.Prepare(context.Background(), Request{
+		Command: model.CommandRun,
+		Targets: []model.Provider{model.ProviderCampus, model.ProviderMLab, model.ProviderApple},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []model.Provider{model.ProviderCampus, model.ProviderMLab}
+	if fmt.Sprint(prepared.Targets) != fmt.Sprint(want) {
+		t.Fatalf("prepared targets = %#v, want %#v", prepared.Targets, want)
+	}
+}
+
+func TestSummaryRunnerPrepareKeepsExplicitOptionalFailureClosed(t *testing.T) {
+	ookla := &preflightMeasurementProvider{
+		fakeMeasurementProvider: fakeMeasurementProvider{measurement: successfulMeasurement(model.ProviderOokla)},
+		preflightErr:            fmt.Errorf("%w: official Ookla CLI was not found", ErrUnavailable),
+	}
+	runner := testSummaryRunner(nil, nil)
+	runner.Ookla = ookla
+	_, err := runner.Prepare(context.Background(), Request{
+		Command: model.CommandOokla,
+		Targets: []model.Provider{model.ProviderOokla},
+	})
+	if !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("error = %v, want ErrUnavailable", err)
+	}
+}
+
 func TestSummaryRunnerSkipsNextProviderAfterCancellation(t *testing.T) {
 	campus := &fakeMeasurementProvider{measurement: model.Measurement{
 		Provider: model.ProviderCampus,
@@ -112,6 +172,15 @@ func (function measurementProviderFunc) Measure(ctx context.Context, request Req
 	return function(ctx, request)
 }
 
+type preflightMeasurementProvider struct {
+	fakeMeasurementProvider
+	preflightErr error
+}
+
+func (provider *preflightMeasurementProvider) Preflight(context.Context, Request) error {
+	return provider.preflightErr
+}
+
 func testSummaryRunner(campus, mlab MeasurementProvider) SummaryRunner {
 	now := time.Date(2026, 7, 21, 8, 0, 0, 0, time.UTC)
 	return SummaryRunner{
@@ -135,6 +204,12 @@ func successfulMeasurement(provider model.Provider) model.Measurement {
 	method := model.MethodLibreSpeedThreeStream
 	if provider == model.ProviderMLab {
 		method = model.MethodNDT7SingleStream
+	}
+	if provider == model.ProviderApple {
+		method = model.MethodAppleNetworkQuality
+	}
+	if provider == model.ProviderOokla {
+		method = model.MethodOoklaSpeedtest
 	}
 	return model.Measurement{
 		Provider:     provider,

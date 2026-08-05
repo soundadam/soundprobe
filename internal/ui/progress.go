@@ -129,7 +129,7 @@ type clearMessage struct{}
 func newProgressModel(version string, targets []model.Provider, ready chan struct{}) *progressModel {
 	order := append([]model.Provider(nil), targets...)
 	if len(order) == 0 {
-		order = []model.Provider{model.ProviderCampus, model.ProviderMLab}
+		order = []model.Provider{model.ProviderNJUCampusIPv4, model.ProviderMLab, model.ProviderApple}
 	}
 	states := make(map[model.Provider]providerState, len(order))
 	for _, name := range order {
@@ -222,7 +222,7 @@ func (progress *progressModel) View() tea.View {
 		return tea.NewView("")
 	}
 	lines := []string{
-		fmt.Sprintf("SoundProbe %s", progress.version),
+		fmt.Sprintf("soundprobe %s", progress.version),
 		fmt.Sprintf("Network   %s", renderNetwork(progress.network)),
 		fmt.Sprintf("Order     %s", renderOrder(progress.order)),
 	}

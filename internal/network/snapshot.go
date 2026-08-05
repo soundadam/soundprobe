@@ -88,6 +88,13 @@ func defaultRoute(ctx context.Context) (string, string) {
 			return "", ""
 		}
 		return parseLinuxRoute(string(output))
+	case "windows":
+		output, err := runCommand(ctx, "route", "print", "-4")
+		if err != nil {
+			return "", ""
+		}
+		interfaceAddress, gateway := parseWindowsRoute(string(output))
+		return interfaceNameForAddress(interfaceAddress), gateway
 	default:
 		return "", ""
 	}
@@ -125,6 +132,41 @@ func parseLinuxRoute(output string) (string, string) {
 		}
 	}
 	return activeInterface, gateway
+}
+
+func parseWindowsRoute(output string) (string, string) {
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 5 || fields[0] != "0.0.0.0" || fields[1] != "0.0.0.0" {
+			continue
+		}
+		return fields[3], fields[2]
+	}
+	return "", ""
+}
+
+func interfaceNameForAddress(address string) string {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return ""
+	}
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return ""
+	}
+	for _, networkInterface := range interfaces {
+		addresses, err := networkInterface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, candidate := range addresses {
+			ip, _, err := net.ParseCIDR(candidate.String())
+			if err == nil && ip.String() == address {
+				return networkInterface.Name
+			}
+		}
+	}
+	return ""
 }
 
 func localAddresses(activeInterface string) ([]string, []string) {
@@ -169,6 +211,12 @@ func dnsServers(ctx context.Context) []string {
 			return parseDarwinDNS(string(output))
 		}
 	}
+	if runtime.GOOS == "windows" {
+		output, err := runCommand(ctx, "ipconfig", "/all")
+		if err == nil {
+			return parseWindowsDNS(string(output))
+		}
+	}
 	data, err := os.ReadFile("/etc/resolv.conf")
 	if err != nil {
 		return nil
@@ -198,6 +246,30 @@ func parseResolvConf(output string) []string {
 		fields := strings.Fields(scanner.Text())
 		if len(fields) >= 2 && fields[0] == "nameserver" {
 			servers = appendValidIP(servers, fields[1])
+		}
+	}
+	return uniqueSorted(servers)
+}
+
+func parseWindowsDNS(output string) []string {
+	var servers []string
+	inDNS := false
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if _, value, found := strings.Cut(line, ":"); found {
+			label := strings.ToLower(strings.TrimSpace(strings.SplitN(line, ":", 2)[0]))
+			inDNS = strings.Contains(label, "dns servers") || strings.Contains(label, "dns server")
+			if inDNS {
+				servers = appendValidIP(servers, value)
+			}
+			continue
+		}
+		if inDNS {
+			if ip := net.ParseIP(trimmed); ip != nil {
+				servers = appendValidIP(servers, trimmed)
+			} else if trimmed != "" {
+				inDNS = false
+			}
 		}
 	}
 	return uniqueSorted(servers)

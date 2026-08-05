@@ -1,4 +1,4 @@
-# Testing SoundProbe
+# Testing soundprobe
 
 Routine tests never contact real NJU, M-Lab, or domestic bandwidth servers.
 Real measurements are explicit operator acceptance steps.
@@ -19,6 +19,10 @@ Homebrew template checks, and deterministic release artifact tests. It covers:
 - sequential multi-target execution and skipped targets after cancellation;
 - LibreSpeed arguments with telemetry disabled;
 - M-Lab JSON events, transient live rates, and final summaries;
+- Apple `networkQuality` JSON success/error/timeout fixtures, `-I` binding, and
+  responsiveness RPM parsing;
+- official Ookla JSON/server metadata, version identity, interface binding, and
+  rejection of the Python `speedtest-cli`;
 - success, partial, failure, timeout, malformed output, and cancellation;
 - legacy schema-v1 history without an explicit `targets` field;
 - normalized one-measurement-per-row CSV export;
@@ -80,7 +84,29 @@ Acceptance requires a terminal and the exact word `accept`. A noninteractive
 plan containing M-Lab must fail before contacting it when consent is absent. A
 plan without M-Lab must not ask for M-Lab consent.
 
-## 4. Station discovery and selector
+## 4.1 Apple and Ookla acceptance
+
+Offline tests use fake executables and never perform a real bandwidth test. On an
+acceptance host, verify helper availability first. Apple is expected only on
+macOS; Linux and Windows should report it as an unavailable optional provider
+without failing the base run:
+
+```sh
+./bin/soundprobe doctor --json
+/usr/bin/networkQuality -h  # macOS only
+speedtest --version          # only when the official Ookla CLI was installed intentionally
+```
+
+Apple must run once with `-c -s` (and `-I <active-interface>` when known), and its
+JSON must expose throughput, base RTT and RPM fields. Ookla must run once with
+`--format=json`; inspect server ID, sponsor, host/address, latency, jitter and
+address family. soundprobe never passes `--accept-license` or `--accept-gdpr`.
+A Python `speedtest-cli` binary must be reported as unavailable rather than
+executed. A combined `run` must remove that optional target and continue with
+the remaining providers; an explicit `soundprobe ookla` command must fail before
+starting a measurement.
+
+## 5. Station discovery and selector
 
 Station probes are lightweight but real:
 
@@ -100,16 +126,18 @@ Run the selector:
 
 Check:
 
+- a fresh preferences path opens Chinese/English setup and saves mode `0600`;
+- `soundprobe setup` can change language and daily stations;
+- later bare runs show only the configured daily stations;
 - the selector clears before progress begins;
-- Campus is recommended only when reachable for the chosen family;
-- NJU Edge is displayed as disabled with a browser-verification explanation;
-- when Campus is unavailable, M-Lab alone is recommended;
+- NJU Campus plus M-Lab and Apple are recommended; Ookla is never auto-selected;
+- NJU Edge is omitted from daily CLI choices and its error points to the web test;
 - `4`, `6`, and `d` switch family modes;
 - IPv4-only domestic stations are disabled in IPv6 mode;
 - Space toggles stations and Enter starts the exact visible order;
 - q, Esc, and Ctrl-C cancel without creating a history entry.
 
-## 5. Real NJU acceptance
+## 6. Real NJU acceptance
 
 These commands perform real uploads and downloads.
 
@@ -141,9 +169,11 @@ is unavailable in terminal mode because its official backend requires browser
 verification. `soundprobe stations` must show both Edge families as `unsupported`.
 Do not add automated challenge solving to the acceptance test.
 
-## 6. Domestic station acceptance
+## 7. Domestic station acceptance
 
-Run individual stations before a complete batch:
+Run the two default regional stations before a complete batch. CERNET remains
+an explicit compatibility probe and is expected to fail cleanly while its
+current backend is unreachable:
 
 ```sh
 ./bin/soundprobe run --targets cernet --family ipv4 --no-save --json
@@ -160,25 +190,26 @@ Then validate sequential batch behavior:
 Expected target order:
 
 ```json
-["cernet-ipv4", "qlu-ipv4", "tongji-ipv4"]
+["tongji-ipv4", "qlu-ipv4"]
 ```
 
 One failed station must not stop later stations. Inspect helper arguments during
 offline tests to ensure `--telemetry-level disabled` is always present.
 
-## 7. M-Lab and mixed plans
+## 8. M-Lab and mixed plans
 
 ```sh
 ./bin/soundprobe mlab --no-save --json
-./bin/soundprobe run --targets nju-campus,mlab --family ipv4 --no-save --json
-./bin/soundprobe run --targets nju-campus,mlab --family dual --no-save --json
+./bin/soundprobe apple --no-save --json
+./bin/soundprobe run --targets nju-campus,mlab,apple --family ipv4 --no-save --json
+./bin/soundprobe run --targets nju-campus,mlab,apple --family dual --no-save --json
 ```
 
 M-Lab uses automatic Locate selection. During a TTY run its download and upload
 rates should update within the same fixed-height panel. NJU or domestic failures
 must not prevent M-Lab from running when it is later in the selected plan.
 
-## 8. Terminal rendering
+## 9. Terminal rendering
 
 For an interactive combined plan, verify:
 
@@ -207,7 +238,7 @@ python3 -m json.tool /tmp/run.json
 
 The file must contain exactly one JSON document.
 
-## 9. Cancellation
+## 10. Cancellation
 
 Start a multi-target plan and press Ctrl-C during an active target:
 
@@ -218,7 +249,7 @@ Start a multi-target plan and press Ctrl-C during an active target:
 Expected exit code: `130`. The active target is cancelled, every later target is
 skipped, and no later helper starts.
 
-## 10. History and export
+## 11. History and export
 
 Save a labeled multi-target run:
 
@@ -265,7 +296,7 @@ directory: drwx------
 files:     -rw-------
 ```
 
-## 11. Homebrew gate
+## 12. Homebrew gate
 
 On supported macOS arm64 versions:
 

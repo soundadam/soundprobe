@@ -1,0 +1,7 @@
+BINARY := bin/soundprobe
+GO ?= go
+GOTOOLCHAIN ?= auto
+
+.PHONY: build tools verify-mod test test-race test-campus-provider test-mlab-provider \
+	test-campus-fixture test-run-fixture test-homebrew-template test-release-artifact \
+	test-offline vet check ci release clean clean-tools

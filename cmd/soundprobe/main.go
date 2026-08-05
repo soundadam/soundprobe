@@ -12,9 +12,12 @@ import (
 	"github.com/soundadam/soundprobe/internal/helper"
 	"github.com/soundadam/soundprobe/internal/model"
 	"github.com/soundadam/soundprobe/internal/network"
+	"github.com/soundadam/soundprobe/internal/preferences"
 	"github.com/soundadam/soundprobe/internal/provider"
 	"github.com/soundadam/soundprobe/internal/provider/campus"
 	"github.com/soundadam/soundprobe/internal/provider/mlab"
+	"github.com/soundadam/soundprobe/internal/provider/networkquality"
+	"github.com/soundadam/soundprobe/internal/provider/ookla"
 	"github.com/soundadam/soundprobe/internal/storage"
 	"github.com/soundadam/soundprobe/internal/target"
 )
@@ -29,6 +32,12 @@ func main() {
 	consentPath, err := consent.DefaultPath()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "soundprobe: determine consent path: %v\n", err)
+		os.Exit(1)
+	}
+
+	preferencesPath, err := preferences.DefaultPath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "soundprobe: determine preferences path: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -53,24 +62,31 @@ func main() {
 	}
 	mlabRunner := mlab.New(helperResolver)
 	providers[model.ProviderMLab] = mlabRunner
+	appleRunner := networkquality.New()
+	ooklaRunner := ookla.New()
+	providers[model.ProviderApple] = appleRunner
+	providers[model.ProviderOokla] = ooklaRunner
 	measurementRunner := provider.SummaryRunner{
 		ToolVersion: buildinfo.Version,
 		Campus:      campus.New(helperResolver),
 		MLab:        mlabRunner,
+		Apple:       appleRunner,
+		Ookla:       ooklaRunner,
 		Providers:   providers,
 		Snapshot:    network.Snapshot,
 	}
 
 	app := &cli.App{
-		In:        os.Stdin,
-		Out:       os.Stdout,
-		Err:       os.Stderr,
-		StdinTTY:  isTerminal(os.Stdin),
-		StdoutTTY: isTerminal(os.Stdout),
-		Version:   buildinfo.Version,
-		Runner:    measurementRunner,
-		History:   storage.New(historyDir),
-		Consent:   consent.New(consentPath),
+		In:          os.Stdin,
+		Out:         os.Stdout,
+		Err:         os.Stderr,
+		StdinTTY:    isTerminal(os.Stdin),
+		StdoutTTY:   isTerminal(os.Stdout),
+		Version:     buildinfo.Version,
+		Runner:      measurementRunner,
+		History:     storage.New(historyDir),
+		Consent:     consent.New(consentPath),
+		Preferences: preferences.New(preferencesPath),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)

@@ -15,13 +15,14 @@ import (
 	"github.com/soundadam/soundprobe/internal/consent"
 	"github.com/soundadam/soundprobe/internal/exporter"
 	"github.com/soundadam/soundprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/preferences"
 	"github.com/soundadam/soundprobe/internal/provider"
 	"github.com/soundadam/soundprobe/internal/storage"
 	"github.com/soundadam/soundprobe/internal/target"
 	"github.com/soundadam/soundprobe/internal/ui"
 )
 
-const usage = `SoundProbe measures selected NJU, M-Lab, and domestic network paths.
+const usage = `soundprobe measures education-network paths first, with public references.
 
 Usage:
   soundprobe
@@ -30,12 +31,15 @@ Usage:
   soundprobe edge [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
   soundprobe domestic [--targets LIST] [--family ipv4|dual] [--label TEXT] [--note TEXT] [--no-save]
   soundprobe mlab [--label TEXT] [--note TEXT] [--no-save]
+  soundprobe apple [--label TEXT] [--note TEXT] [--no-save]
+  soundprobe ookla [--label TEXT] [--note TEXT] [--no-save]
   soundprobe stations [--json]
   soundprobe history [--limit N]
   soundprobe last [--json]
   soundprobe show RUN_ID [--json]
   soundprobe export --format jsonl|csv --output PATH
   soundprobe consent status|accept|revoke
+  soundprobe setup
   soundprobe doctor [--json]
   soundprobe version
 `
@@ -46,18 +50,21 @@ type progressRenderer interface {
 }
 
 type App struct {
-	In              io.Reader
-	Out             io.Writer
-	Err             io.Writer
-	StdinTTY        bool
-	StdoutTTY       bool
-	Version         string
-	Runner          provider.Runner
-	History         *storage.Store
-	Consent         *consent.Store
-	Now             func() time.Time
-	ProgressFactory func(io.Writer, string, []model.Provider) (progressRenderer, error)
-	SelectorFactory func(context.Context, io.Reader, io.Writer, string) (target.Plan, error)
+	In                        io.Reader
+	Out                       io.Writer
+	Err                       io.Writer
+	StdinTTY                  bool
+	StdoutTTY                 bool
+	Version                   string
+	Runner                    provider.Runner
+	History                   *storage.Store
+	Consent                   *consent.Store
+	Now                       func() time.Time
+	ProgressFactory           func(io.Writer, string, []model.Provider) (progressRenderer, error)
+	SelectorFactory           func(context.Context, io.Reader, io.Writer, string) (target.Plan, error)
+	ConfiguredSelectorFactory func(context.Context, io.Reader, io.Writer, string, preferences.Config) (target.Plan, error)
+	SetupFactory              func(context.Context, io.Reader, io.Writer, string, preferences.Config) (preferences.Config, error)
+	Preferences               *preferences.Store
 }
 
 type commandOptions struct {
@@ -76,7 +83,19 @@ func (app *App) Execute(ctx context.Context, args []string) int {
 
 	if len(args) == 0 {
 		if app.StdinTTY && app.StdoutTTY && !jsonMode {
-			plan, err := app.SelectorFactory(ctx, app.In, app.Out, app.Version)
+			config, err := app.loadOrConfigurePreferences(ctx)
+			if err != nil {
+				if errors.Is(err, ui.ErrSetupCancelled) {
+					return 130
+				}
+				return app.fail(false, "preferences_error", err.Error(), 1)
+			}
+			var plan target.Plan
+			if app.Preferences != nil {
+				plan, err = app.ConfiguredSelectorFactory(ctx, app.In, app.Out, app.Version, config)
+			} else {
+				plan, err = app.SelectorFactory(ctx, app.In, app.Out, app.Version)
+			}
 			if err != nil {
 				if errors.Is(err, ui.ErrSelectionCancelled) {
 					return 130
@@ -98,7 +117,7 @@ func (app *App) Execute(ctx context.Context, args []string) int {
 		if len(rest) != 0 {
 			return app.fail(jsonMode, "invalid_arguments", "version does not accept arguments", 1)
 		}
-		return app.writeValue(jsonMode, map[string]string{"version": app.Version}, "SoundProbe "+app.Version)
+		return app.writeValue(jsonMode, map[string]string{"version": app.Version}, "soundprobe "+app.Version)
 	case "run":
 		return app.executeMeasurement(ctx, model.CommandRun, rest, jsonMode)
 	case "campus":
@@ -109,6 +128,10 @@ func (app *App) Execute(ctx context.Context, args []string) int {
 		return app.executeMeasurement(ctx, model.CommandDomestic, rest, jsonMode)
 	case "mlab":
 		return app.executeMeasurement(ctx, model.CommandMLab, rest, jsonMode)
+	case "apple":
+		return app.executeMeasurement(ctx, model.CommandApple, rest, jsonMode)
+	case "ookla":
+		return app.executeMeasurement(ctx, model.CommandOokla, rest, jsonMode)
 	case "stations":
 		return app.executeStations(ctx, rest, jsonMode)
 	case "history":
@@ -121,6 +144,8 @@ func (app *App) Execute(ctx context.Context, args []string) int {
 		return app.executeExport(rest, jsonMode)
 	case "consent":
 		return app.executeConsent(rest, jsonMode)
+	case "setup":
+		return app.executeSetup(ctx, rest, jsonMode)
 	case "doctor":
 		return app.executeDoctor(ctx, rest, jsonMode)
 	default:
@@ -152,6 +177,70 @@ func (app *App) setDefaults() {
 	if app.SelectorFactory == nil {
 		app.SelectorFactory = ui.SelectPlan
 	}
+	if app.ConfiguredSelectorFactory == nil {
+		app.ConfiguredSelectorFactory = ui.SelectPlanConfigured
+	}
+	if app.SetupFactory == nil {
+		app.SetupFactory = ui.Configure
+	}
+}
+
+func (app *App) loadOrConfigurePreferences(ctx context.Context) (preferences.Config, error) {
+	if app.Preferences == nil {
+		return preferences.DefaultConfig(), nil
+	}
+	config, exists, err := app.Preferences.Load()
+	if err != nil {
+		return preferences.Config{}, err
+	}
+	if exists {
+		return config, nil
+	}
+	config, err = app.SetupFactory(ctx, app.In, app.Out, app.Version, preferences.DefaultConfig())
+	if err != nil {
+		return preferences.Config{}, err
+	}
+	if err := app.Preferences.Save(config); err != nil {
+		return preferences.Config{}, err
+	}
+	return config, nil
+}
+
+func (app *App) executeSetup(ctx context.Context, args []string, jsonMode bool) int {
+	if len(args) != 0 {
+		return app.fail(jsonMode, "invalid_arguments", "setup does not accept arguments", 1)
+	}
+	if jsonMode || !app.StdinTTY || !app.StdoutTTY {
+		return app.fail(jsonMode, "setup_requires_interaction", "setup requires an interactive terminal", 1)
+	}
+	if app.Preferences == nil {
+		return app.fail(false, "preferences_error", "preferences store is not configured", 1)
+	}
+	current, exists, err := app.Preferences.Load()
+	if err != nil {
+		return app.fail(false, "preferences_error", err.Error(), 1)
+	}
+	if !exists {
+		current = preferences.DefaultConfig()
+	}
+	config, err := app.SetupFactory(ctx, app.In, app.Out, app.Version, current)
+	if err != nil {
+		if errors.Is(err, ui.ErrSetupCancelled) {
+			return 130
+		}
+		return app.fail(false, "preferences_error", err.Error(), 1)
+	}
+	if err := app.Preferences.Save(config); err != nil {
+		return app.fail(false, "preferences_error", err.Error(), 1)
+	}
+	return app.writeValue(false, config, app.preferenceSavedMessage(config))
+}
+
+func (app *App) preferenceSavedMessage(config preferences.Config) string {
+	if config.Language == preferences.LanguageChinese {
+		return "日常测速站设置已保存：" + strings.Join(config.DailyStations, ", ")
+	}
+	return "Daily stations saved: " + strings.Join(config.DailyStations, ", ")
 }
 
 func extractGlobalJSON(args []string) ([]string, bool) {
@@ -189,9 +278,33 @@ func (app *App) executeMeasurementPlan(ctx context.Context, command model.Comman
 		Label:   optionalString(options.label),
 		Note:    optionalString(options.note),
 	}
-	if preflight, ok := app.Runner.(provider.PreflightRunner); ok {
-		if err := preflight.Preflight(ctx, request); err != nil {
+	requestedProviders := append([]model.Provider(nil), request.Targets...)
+	prepared := false
+	if preparer, ok := app.Runner.(provider.RequestPreparer); ok {
+		var err error
+		request, err = preparer.Prepare(ctx, request)
+		if err != nil {
 			return app.fail(jsonMode, measurementErrorCode(err), err.Error(), 1)
+		}
+		prepared = true
+		if !jsonMode {
+			for _, requested := range requestedProviders {
+				if containsProvider(request.Targets, requested) {
+					continue
+				}
+				fmt.Fprintf(app.Err, "soundprobe: optional target %s is unavailable; continuing without it (see `soundprobe doctor --json`)\n", target.Label(requested))
+			}
+		}
+		// Optional helpers may be removed during preparation. Keep consent,
+		// progress, and the persisted target order aligned with the actual run.
+		plan.Providers = append([]model.Provider(nil), request.Targets...)
+		plan.StationIDs = target.StationIDs(request.Targets)
+	}
+	if !prepared {
+		if preflight, ok := app.Runner.(provider.PreflightRunner); ok {
+			if err := preflight.Preflight(ctx, request); err != nil {
+				return app.fail(jsonMode, measurementErrorCode(err), err.Error(), 1)
+			}
 		}
 	}
 	if target.NeedsMLab(plan.Providers) {
@@ -307,15 +420,19 @@ func resolvePlan(command model.Command, options commandOptions) (target.Plan, er
 	ids := []string{}
 	switch command {
 	case model.CommandRun:
-		ids = []string{"nju-campus", "mlab"}
+		ids = []string{"nju-campus", "mlab", "apple"}
 	case model.CommandCampus:
 		ids = []string{"nju-campus"}
 	case model.CommandEdge:
 		ids = []string{"nju-edge"}
 	case model.CommandDomestic:
-		ids = []string{"cernet", "qlu", "tongji"}
+		ids = []string{"tongji", "qlu"}
 	case model.CommandMLab:
 		ids = []string{"mlab"}
+	case model.CommandApple:
+		ids = []string{"apple"}
+	case model.CommandOokla:
+		ids = []string{"ookla"}
 	default:
 		return target.Plan{}, fmt.Errorf("unsupported measurement command %q", command)
 	}
@@ -496,20 +613,37 @@ func (app *App) executeDoctor(ctx context.Context, args []string, jsonMode bool)
 	}
 
 	checks := map[string]string{}
+	optionalChecks := map[string]string{}
 	ready := true
 	for _, check := range []struct {
-		name    string
-		command model.Command
+		name     string
+		command  model.Command
+		provider model.Provider
 	}{
-		{name: "campus", command: model.CommandCampus},
-		{name: "mlab", command: model.CommandMLab},
+		{name: "campus", command: model.CommandCampus, provider: model.ProviderCampus},
+		{name: "mlab", command: model.CommandMLab, provider: model.ProviderMLab},
 	} {
-		err := preflight.Preflight(ctx, provider.Request{Command: check.command})
+		err := preflight.Preflight(ctx, provider.Request{Command: check.command, Targets: []model.Provider{check.provider}})
 		if err != nil {
 			checks[check.name] = err.Error()
 			ready = false
 		} else {
 			checks[check.name] = "ready"
+		}
+	}
+	for _, check := range []struct {
+		name     string
+		command  model.Command
+		provider model.Provider
+	}{
+		{name: "apple", command: model.CommandApple, provider: model.ProviderApple},
+		{name: "ookla", command: model.CommandOokla, provider: model.ProviderOokla},
+	} {
+		err := preflight.Preflight(ctx, provider.Request{Command: check.command, Targets: []model.Provider{check.provider}})
+		if err != nil {
+			optionalChecks[check.name] = err.Error()
+		} else {
+			optionalChecks[check.name] = "ready"
 		}
 	}
 
@@ -523,21 +657,33 @@ func (app *App) executeDoctor(ctx context.Context, args []string, jsonMode bool)
 	}
 	combinedReady := ready && consentAccepted
 	payload := map[string]any{
-		"version":         app.Version,
-		"ready":           ready,
-		"combinedReady":   combinedReady,
-		"providers":       checks,
-		"consentAccepted": consentAccepted,
-		"historyPath":     historyPath,
+		"version":           app.Version,
+		"ready":             ready,
+		"combinedReady":     combinedReady,
+		"providers":         checks,
+		"optionalProviders": optionalChecks,
+		"consentAccepted":   consentAccepted,
+		"historyPath":       historyPath,
+	}
+	if app.Preferences != nil {
+		config, exists, preferencesErr := app.Preferences.Load()
+		payload["preferencesPath"] = app.Preferences.Path
+		payload["setupComplete"] = exists && preferencesErr == nil
+		if preferencesErr == nil && exists {
+			payload["language"] = config.Language
+			payload["dailyStations"] = config.DailyStations
+		}
 	}
 	if jsonMode {
 		if err := json.NewEncoder(app.Out).Encode(payload); err != nil {
 			return 1
 		}
 	} else {
-		fmt.Fprintf(app.Out, "SoundProbe %s diagnostics\n", app.Version)
+		fmt.Fprintf(app.Out, "soundprobe %s diagnostics\n", app.Version)
 		fmt.Fprintf(app.Out, "Campus   %s\n", checks["campus"])
 		fmt.Fprintf(app.Out, "M-Lab    %s\n", checks["mlab"])
+		fmt.Fprintf(app.Out, "Apple    %s\n", optionalChecks["apple"])
+		fmt.Fprintf(app.Out, "Ookla    %s\n", optionalChecks["ookla"])
 		fmt.Fprintf(app.Out, "Consent  %t\n", consentAccepted)
 		fmt.Fprintf(app.Out, "Combined %t\n", combinedReady)
 		fmt.Fprintf(app.Out, "History  %s\n", historyPath)
@@ -635,7 +781,7 @@ func (app *App) promptAndAcceptConsent(jsonMode bool) int {
 }
 
 func (app *App) renderSummary(summary model.RunSummary) {
-	fmt.Fprintf(app.Out, "SoundProbe %s · %s · %s\n",
+	fmt.Fprintf(app.Out, "soundprobe %s · %s · %s\n",
 		summary.ToolVersion,
 		summary.Status,
 		formatDuration(summary.EndedAt.Sub(summary.StartedAt)),
@@ -726,6 +872,15 @@ func optionalString(value string) *string {
 	return &value
 }
 
+func containsProvider(providers []model.Provider, wanted model.Provider) bool {
+	for _, provider := range providers {
+		if provider == wanted {
+			return true
+		}
+	}
+	return false
+}
+
 func valueOrEmpty(value *string) string {
 	if value == nil {
 		return ""
@@ -755,11 +910,21 @@ func formatNetworkContext(network model.NetworkContext) string {
 }
 
 func measurementServer(measurement model.Measurement) string {
+	sponsor := valueOrEmpty(measurement.ServerSponsor)
 	if measurement.ServerFQDN != nil && *measurement.ServerFQDN != "" {
+		if sponsor != "" {
+			return *measurement.ServerFQDN + " · " + sponsor
+		}
 		return *measurement.ServerFQDN
 	}
 	if measurement.ServerName != nil && *measurement.ServerName != "" {
+		if sponsor != "" && *measurement.ServerName != sponsor {
+			return *measurement.ServerName + " · " + sponsor
+		}
 		return *measurement.ServerName
+	}
+	if measurement.ServerAddress != nil && *measurement.ServerAddress != "" {
+		return *measurement.ServerAddress
 	}
 	return "—"
 }
