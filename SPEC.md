@@ -166,9 +166,19 @@ information.
 
 Only the official Ookla `speedtest` executable is accepted. Preflight must inspect
 `speedtest --version`, require an Ookla/Speedtest identity, and reject the Python
-`speedtest-cli` output. Run `speedtest --format=json`, adding
+`speedtest-cli` output. When no explicit path is configured, inspect all PATH
+candidates and use the first validated official executable; `SOUNDPROBE_OOKLA_PATH`
+is an explicit override. Run `speedtest --format=json`, adding
 `--interface=<active-interface>` when available. Never pass license or GDPR
-acceptance flags automatically and never install or bundle the helper.
+acceptance flags automatically and never bundle or maintain a replacement
+implementation of the helper.
+
+When an explicit interactive `soundprobe ookla` command finds a missing or
+conflicting helper, the CLI may offer the official Homebrew sequence
+(`brew tap teamookla/speedtest`, `brew update`, `brew install speedtest --force`).
+The sequence runs only after an Enter confirmation, uses direct argument arrays
+instead of a shell, and never uninstalls an existing formula. Combined runs,
+JSON mode, and redirected input only report the unavailable optional provider.
 
 Parse server ID, sponsor, name/location, host, actual server address, external IP,
 address family, latency, jitter, byte counts and upload/download bandwidth. The

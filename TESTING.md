@@ -106,6 +106,12 @@ executed. A combined `run` must remove that optional target and continue with
 the remaining providers; an explicit `soundprobe ookla` command must fail before
 starting a measurement.
 
+For an interactive explicit `soundprobe ookla` failure, use a fake Homebrew
+resolver and command runner to verify that the official tap/update/install
+sequence is displayed and runs only after an empty Enter line. Verify that a
+non-empty response performs no external command, that `--json` never prompts,
+and that uninstall commands are displayed only as manual conflict recovery.
+
 ## 5. Station discovery and selector
 
 Station probes are lightweight but real:

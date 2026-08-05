@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -16,17 +18,19 @@ import (
 )
 
 const (
-	HelperName     = "speedtest"
-	DefaultTimeout = 90 * time.Second
+	HelperName         = "speedtest"
+	OfficialInstallURL = "https://www.speedtest.net/apps/cli"
+	DefaultTimeout     = 90 * time.Second
 )
 
 var versionPattern = regexp.MustCompile(`\b[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?\b`)
 
 type Runner struct {
-	Path       string
-	LookupPath func(string) (string, error)
-	Timeout    time.Duration
-	Now        func() time.Time
+	Path          string
+	LookupPath    func(string) (string, error)
+	LookupAllPath func(string) ([]string, error)
+	Timeout       time.Duration
+	Now           func() time.Time
 }
 
 func New() *Runner { return &Runner{} }
@@ -101,43 +105,128 @@ func (runner *Runner) Measure(ctx context.Context, request provider.Request) (mo
 
 func (runner *Runner) resolve(ctx context.Context) (string, string, error) {
 	path := strings.TrimSpace(runner.Path)
+	candidates := []string{}
+	explicit := path != ""
+	if !explicit {
+		if override := strings.TrimSpace(os.Getenv("SOUNDPROBE_OOKLA_PATH")); override != "" {
+			path = override
+			explicit = true
+		}
+	}
+	if explicit {
+		candidates = []string{path}
+	} else {
+		var err error
+		if runner.LookupAllPath != nil {
+			candidates, err = runner.LookupAllPath(HelperName)
+		} else if runner.LookupPath != nil {
+			var resolved string
+			resolved, err = runner.LookupPath(HelperName)
+			if err == nil {
+				candidates = []string{resolved}
+			}
+		} else {
+			candidates, err = lookupAllPath(HelperName)
+		}
+		if err != nil && len(candidates) == 0 {
+			return "", "", fmt.Errorf("%w: official Ookla CLI %q was not found; install it from %s", provider.ErrUnavailable, HelperName, OfficialInstallURL)
+		}
+	}
+
+	var firstErr error
+	for _, candidate := range candidates {
+		version, err := runner.validate(ctx, candidate)
+		if err == nil {
+			return candidate, version, nil
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+		if explicit {
+			return "", "", err
+		}
+	}
+	if firstErr != nil {
+		return "", "", firstErr
+	}
+	return "", "", fmt.Errorf("%w: official Ookla CLI %q was not found; install it from %s", provider.ErrUnavailable, HelperName, OfficialInstallURL)
+}
+
+func (runner *Runner) validate(ctx context.Context, path string) (string, error) {
+	path = strings.TrimSpace(path)
 	if path == "" {
-		lookup := runner.LookupPath
-		if lookup == nil {
-			lookup = exec.LookPath
-		}
-		resolved, err := lookup(HelperName)
-		if err != nil {
-			return "", "", fmt.Errorf("%w: official Ookla CLI %q was not found; install it from https://www.speedtest.net/apps/cli", provider.ErrUnavailable, HelperName)
-		}
-		path = resolved
+		return "", fmt.Errorf("%w: official Ookla CLI path is empty", provider.ErrUnavailable)
 	}
 	info, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return "", "", fmt.Errorf("%w: Ookla CLI was not found at %s", provider.ErrUnavailable, path)
+		return "", fmt.Errorf("%w: Ookla CLI was not found at %s", provider.ErrUnavailable, path)
 	}
 	if err != nil {
-		return "", "", fmt.Errorf("%w: inspect Ookla CLI: %v", provider.ErrUnavailable, err)
+		return "", fmt.Errorf("%w: inspect Ookla CLI: %v", provider.ErrUnavailable, err)
 	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
-		return "", "", fmt.Errorf("%w: Ookla CLI %s is not executable", provider.ErrUnavailable, path)
+	if !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0) {
+		return "", fmt.Errorf("%w: Ookla CLI %s is not executable", provider.ErrUnavailable, path)
 	}
 
 	command := exec.CommandContext(ctx, path, "--version")
 	output, err := command.CombinedOutput()
 	if err != nil {
-		return "", "", fmt.Errorf("%w: run Ookla CLI --version: %v", provider.ErrUnavailable, err)
+		return "", fmt.Errorf("%w: run Ookla CLI --version: %v", provider.ErrUnavailable, err)
 	}
 	text := strings.TrimSpace(string(output))
 	lower := strings.ToLower(text)
 	if !strings.Contains(lower, "ookla") || !strings.Contains(lower, "speedtest") || strings.Contains(lower, "speedtest-cli") {
-		return "", "", fmt.Errorf("%w: %s is not the official Ookla Speedtest CLI", provider.ErrUnavailable, path)
+		if text == "" {
+			text = "no usable version output"
+		}
+		return "", fmt.Errorf("%w: %s is not the official Ookla Speedtest CLI (version output: %q)", provider.ErrUnavailable, path, compact(text))
 	}
 	version := "unknown"
 	if match := versionPattern.FindString(text); match != "" {
 		version = match
 	}
-	return path, version, nil
+	return version, nil
+}
+
+func lookupAllPath(name string) ([]string, error) {
+	pathEnv := os.Getenv("PATH")
+	if pathEnv == "" {
+		return nil, exec.ErrNotFound
+	}
+	seen := map[string]struct{}{}
+	result := make([]string, 0)
+	for _, directory := range filepath.SplitList(pathEnv) {
+		if directory == "" {
+			directory = "."
+		}
+		candidates := []string{filepath.Join(directory, name)}
+		if runtime.GOOS == "windows" {
+			for _, extension := range filepath.SplitList(os.Getenv("PATHEXT")) {
+				if extension == "" {
+					continue
+				}
+				candidates = append(candidates, filepath.Join(directory, name+extension))
+			}
+		}
+		for _, candidate := range candidates {
+			resolved, err := filepath.Abs(candidate)
+			if err == nil {
+				candidate = resolved
+			}
+			if _, exists := seen[candidate]; exists {
+				continue
+			}
+			if _, err := os.Stat(candidate); err != nil {
+				continue
+			}
+			seen[candidate] = struct{}{}
+			result = append(result, candidate)
+		}
+	}
+	if len(result) == 0 {
+		return nil, exec.ErrNotFound
+	}
+	return result, nil
 }
 
 func (runner *Runner) setDefaults() {

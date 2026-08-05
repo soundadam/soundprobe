@@ -73,12 +73,14 @@ macOS 自带 `/usr/bin/networkQuality`，soundprobe 只调用它，不下载、�
 
 ### Ookla Speedtest CLI（可选）
 
-只支持 Ookla 官方 CLI，安装方式和许可请以 [Ookla 官方 CLI 页面](https://www.speedtest.net/apps/cli)
-为准；官方 Homebrew 命令目前是：
+只支持 Ookla 官方 CLI；soundprobe 不维护 Python `speedtest-cli`，也不把 Ookla
+协议实现降级到自己的 CLI 中。安装方式和许可请以 [Ookla 官方 CLI 页面](https://www.speedtest.net/apps/cli)
+为准。官方 Homebrew 命令为：
 
 ```sh
 brew tap teamookla/speedtest
-brew install speedtest
+brew update
+brew install speedtest --force
 speedtest --version
 ```
 
@@ -87,14 +89,38 @@ speedtest --version
 `--accept-gdpr`。第一次运行若需要接受条款，请用户直接按 Ookla 的提示操作。
 
 Homebrew 中名为 `speedtest-cli` 的 Python 工具不是官方 Ookla CLI，且上游已
-停止维护；soundprobe 会检查 `speedtest --version` 的官方标识并拒绝它。不
-自动卸载冲突程序，请用户自行决定 PATH 中哪个可执行文件应被调用：
+停止维护；soundprobe 会检查 `speedtest --version` 的官方标识并拒绝它。它会
+检查 PATH 中所有同名候选，而不是盲目采用第一个；也可用
+`SOUNDPROBE_OOKLA_PATH=/path/to/speedtest` 指定官方二进制。不自动卸载冲突程序，
+请用户自行决定 PATH 中哪个可执行文件应被调用：
 
 ```sh
 command -v speedtest
 speedtest --version
 soundprobe doctor --json
 ```
+
+当用户明确运行 `soundprobe ookla`，且交互终端检测到上述冲突时，soundprobe
+会显示官方 Homebrew 修复序列，并等待用户按 Enter：
+
+```text
+brew tap teamookla/speedtest
+brew update
+brew install speedtest --force
+```
+
+只有按 Enter 才会逐条执行这些固定参数；输入其他内容会取消。组合运行、重定向
+和 `--json` 不会暂停安装。soundprobe 不会自动卸载已有 formula；如果安装报告
+冲突，请确认确实要删除后再手动执行：
+
+```sh
+brew uninstall speedtest --force
+brew uninstall speedtest-cli --force
+brew install speedtest --force
+```
+
+没有 Homebrew 时只提供官方页面，不会尝试下载未知程序。这样 Ookla 与中科大等
+网页测速一样，都是可选的外部参考，不是 soundprobe 必须维护的核心链路。
 
 缺少 Apple（非 macOS）或 Ookla helper 不影响组合运行：soundprobe 会在测速前
 移除不可用的可选目标，并继续 NJU Campus/M-Lab 基础诊断。`doctor` 会在

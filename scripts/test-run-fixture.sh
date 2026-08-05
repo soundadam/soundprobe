@@ -107,7 +107,7 @@ run_command() {
   shift
   (
     cd "$workdir/work"
-    HOME="$workdir/home" PATH="$ookla_bin:$PATH" SOUNDPROBE_NETWORKQUALITY_PATH="$helper_dir/networkQuality" \
+    HOME="$workdir/home" PATH="$ookla_bin:$PATH" SOUNDPROBE_OOKLA_PATH="$ookla_bin/speedtest" SOUNDPROBE_NETWORKQUALITY_PATH="$helper_dir/networkQuality" \
       "$workdir/app/bin/soundprobe" "$@"
   ) > "$output"
 }
@@ -117,14 +117,14 @@ run_command "$workdir/success.json" run --no-save --json
 
 (
   cd "$workdir/work"
-  HOME="$workdir/home" PATH="$bad_ookla_bin:$PATH" SOUNDPROBE_NETWORKQUALITY_PATH="$helper_dir/networkQuality" \
+  HOME="$workdir/home" PATH="$bad_ookla_bin:$PATH" SOUNDPROBE_OOKLA_PATH="$bad_ookla_bin/speedtest" SOUNDPROBE_NETWORKQUALITY_PATH="$helper_dir/networkQuality" \
     "$workdir/app/bin/soundprobe" run --targets nju-campus,mlab,apple,ookla --no-save --json
 ) > "$workdir/python-speedtest.json"
 
 set +e
 (
   cd "$workdir/work"
-  HOME="$workdir/home" PATH="$ookla_bin:$PATH" SOUNDPROBE_NETWORKQUALITY_PATH="$helper_dir/networkQuality" SOUNDPROBE_NDT7_FIXTURE=failure \
+  HOME="$workdir/home" PATH="$ookla_bin:$PATH" SOUNDPROBE_OOKLA_PATH="$ookla_bin/speedtest" SOUNDPROBE_NETWORKQUALITY_PATH="$helper_dir/networkQuality" SOUNDPROBE_NDT7_FIXTURE=failure \
     "$workdir/app/bin/soundprobe" run --no-save --json
 ) > "$workdir/partial.json"
 partial_exit=$?

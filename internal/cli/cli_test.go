@@ -35,6 +35,19 @@ func (runner *preparingFakeRunner) Prepare(_ context.Context, request provider.R
 	return request, nil
 }
 
+type repairableFakeRunner struct {
+	fakeRunner
+	prepares int
+}
+
+func (runner *repairableFakeRunner) Prepare(_ context.Context, request provider.Request) (provider.Request, error) {
+	runner.prepares++
+	if runner.prepares == 1 {
+		return provider.Request{}, fmt.Errorf("%w: /opt/homebrew/bin/speedtest is not the official Ookla Speedtest CLI", provider.ErrUnavailable)
+	}
+	return request, nil
+}
+
 type fakeProgressRenderer struct {
 	events []provider.ProgressEvent
 	closed bool
@@ -123,6 +136,71 @@ func TestCombinedRunContinuesWhenOptionalTargetIsRemoved(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "Ookla Speedtest") {
 		t.Fatalf("stderr did not explain removed optional target: %q", stderr.String())
+	}
+}
+
+func TestOoklaInteractiveRepairRunsOfficialHomebrewCommandsAfterEnter(t *testing.T) {
+	providers := []model.Provider{model.ProviderOokla}
+	runner := &repairableFakeRunner{fakeRunner: fakeRunner{summary: summaryForProviders(model.CommandOokla, providers)}}
+	app, stdout, stderr := newTestApp(t, runner)
+	app.StdoutTTY = true
+	app.In = strings.NewReader("\n")
+	app.LookupCommand = func(name string) (string, error) {
+		if name == "brew" {
+			return "/opt/homebrew/bin/brew", nil
+		}
+		return "", fmt.Errorf("%s not found", name)
+	}
+	var commands []string
+	app.RunCommand = func(_ context.Context, name string, args []string, _, _ io.Writer) error {
+		commands = append(commands, strings.Join(append([]string{name}, args...), " "))
+		return nil
+	}
+	app.ProgressFactory = func(io.Writer, string, []model.Provider) (progressRenderer, error) {
+		return &fakeProgressRenderer{}, nil
+	}
+
+	if exitCode := app.Execute(context.Background(), []string{"ookla", "--no-save"}); exitCode != 0 {
+		t.Fatalf("exit code = %d, stdout = %q, stderr = %q", exitCode, stdout.String(), stderr.String())
+	}
+	want := []string{
+		"brew tap teamookla/speedtest",
+		"brew update",
+		"brew install speedtest --force",
+	}
+	if fmt.Sprint(commands) != fmt.Sprint(want) {
+		t.Fatalf("commands = %#v, want %#v", commands, want)
+	}
+	if runner.prepares != 2 {
+		t.Fatalf("prepares = %d, want 2", runner.prepares)
+	}
+	if !strings.Contains(stdout.String(), "Official download: https://www.speedtest.net/apps/cli") {
+		t.Fatalf("stdout did not include official download: %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "will not be uninstalled automatically") {
+		t.Fatalf("stdout did not document non-destructive repair: %q", stdout.String())
+	}
+}
+
+func TestOoklaInteractiveRepairDoesNotRunWhenCancelled(t *testing.T) {
+	runner := &repairableFakeRunner{fakeRunner: fakeRunner{summary: summaryForProviders(model.CommandOokla, []model.Provider{model.ProviderOokla})}}
+	app, stdout, _ := newTestApp(t, runner)
+	app.StdoutTTY = true
+	app.In = strings.NewReader("q\n")
+	app.LookupCommand = func(string) (string, error) { return "/opt/homebrew/bin/brew", nil }
+	called := false
+	app.RunCommand = func(context.Context, string, []string, io.Writer, io.Writer) error {
+		called = true
+		return nil
+	}
+	if exitCode := app.Execute(context.Background(), []string{"ookla", "--no-save"}); exitCode != 1 {
+		t.Fatalf("exit code = %d, want 1", exitCode)
+	}
+	if called {
+		t.Fatal("RunCommand was called after repair cancellation")
+	}
+	if !strings.Contains(stdout.String(), "installation cancelled") {
+		t.Fatalf("stdout = %q", stdout.String())
 	}
 }
 

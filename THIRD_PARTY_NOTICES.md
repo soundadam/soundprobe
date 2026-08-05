@@ -53,8 +53,10 @@ is not bundled, downloaded, or a Homebrew Formula dependency of soundprobe.
 soundprobe validates the executable identity and refuses the unrelated Python
 `speedtest-cli`. Ookla licensing and any first-run license/GDPR acceptance remain
 between the user and Ookla; soundprobe never passes acceptance flags
-automatically. See <https://www.speedtest.net/apps/cli> for official
-distribution and terms.
+automatically. In an explicit interactive command, soundprobe may display the
+official Homebrew installation commands after a preflight failure, but executes
+them only after Enter and never runs uninstall commands. See
+<https://www.speedtest.net/apps/cli> for official distribution and terms.
 
 ## Bubble Tea
 
