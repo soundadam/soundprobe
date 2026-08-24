@@ -41,7 +41,7 @@ func TestProgressModelRendersEqualProviderPanels(t *testing.T) {
 
 	view := progress.View().Content
 	for _, expected := range []string{
-		"SoundProbe test",
+		"soundprobe test",
 		"Network   en0 · wifi · NJU-WLAN",
 		"Order     NJU Campus · IPv4 → M-Lab · sequential",
 		"NJU Campus · IPv4    ✓ complete · 00:00",

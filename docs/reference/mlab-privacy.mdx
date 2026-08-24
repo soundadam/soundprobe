@@ -1,0 +1,57 @@
+---
+title: "M-Lab 隐私与同意"
+sidebarTitle: "M-Lab 隐私"
+description: "为什么需要显式同意、如何管理同意记录、fail-closed 的行为"
+icon: "shield-halved"
+---
+
+## M-Lab 会收集什么
+
+[M-Lab](https://www.measurementlab.net/)（Measurement Lab）是开放的
+互联网测量平台，其价值正来自**公开数据**：每次 NDT7 测试的结果和 ISP
+提供的公网 IP 地址会被 M-Lab **公开发布并无限期保留**，供研究者与
+监管机构使用。完整政策见
+[M-Lab 隐私政策](https://www.measurementlab.net/privacy/)。
+
+这不是缺陷，而是 M-Lab 的设计目标——但它是一个用户必须自己做的隐私
+决定。所以 soundprobe 的规则是：
+
+> 在任何包含 M-Lab 的计划开始前，必须存在对**当前版本**隐私政策的
+> 显式同意记录；没有记录时宁可失败，也不接触 M-Lab（fail closed）。
+
+## 管理同意
+
+```sh
+soundprobe consent status    # 查看当前状态与政策版本
+soundprobe consent accept    # 交互式接受（需输入 accept）
+soundprobe consent revoke    # 撤销
+```
+
+- `accept` 仅在交互终端可用：soundprobe 会先展示 M-Lab 收集与保留
+  数据的说明和政策地址，要求你**准确输入 `accept`**。JSON 模式下
+  `consent accept` 直接以 `consent_requires_interaction` 失败——同意
+  不能被脚本悄悄完成。
+- 同意记录（政策版本 + 时间戳）保存在本地用户配置目录，权限与历史
+  文件相同（目录 `0700`、文件 `0600`）。
+- 政策版本更新后需要重新同意。
+
+## Fail closed 的具体行为
+
+| 场景 | 行为 |
+| --- | --- |
+| 交互终端，计划含 M-Lab，无同意记录 | 展示政策说明并当场询问；拒绝则整个命令失败 |
+| 非交互 / `--json`，计划含 M-Lab，无同意记录 | 在接触 M-Lab **之前**返回错误码 `consent_required`，退出码 `1` |
+| 计划不含 M-Lab | 完全不需要同意，也不会询问 |
+
+`soundprobe doctor --json` 的 `consentAccepted` 字段可用于在脚本中预检。
+
+## soundprobe 自身的隐私边界
+
+- 无遥测、无远程结果服务、无地理定位、无 ASN 查询；
+- LibreSpeed 目标始终以遥测禁用（`--telemetry-level disabled`）、不
+  分享结果（不传 `--share`）的方式运行；
+- Ookla 的许可与 GDPR 提示由用户直接面对，soundprobe 从不自动传
+  `--accept-license` / `--accept-gdpr`；
+- 所有历史仅存本地，权限收紧，永不自动上传。
+
+相关阅读：[soundprobe 的定位](/positioning/philosophy)。

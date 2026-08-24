@@ -1,8 +1,8 @@
-# SoundProbe v0.2 implementation specification
+# soundprobe v0.4 implementation specification
 
 ## 1. Product contract
 
-SoundProbe measures explicitly selected network targets. A target represents one
+soundprobe measures explicitly selected network targets. A target represents one
 measurement purpose and, where relevant, one address family. Results from
 separate targets must never be silently substituted, ranked, or collapsed into a
 synthetic score.
@@ -13,21 +13,27 @@ The maintained targets are:
 | --- | --- | --- | --- |
 | `nju-campus` | current path to NJU's campus-internal service | IPv4, IPv6 | LibreSpeed, three concurrent streams |
 | `nju-edge` | public path to NJU's internet-facing edge | IPv4, IPv6 | displayed but terminal execution disabled by browser verification |
-| `mlab` | general Internet bulk-transport performance | automatic | M-Lab NDT7, single stream |
+| `mlab` | general Internet bulk-transport performance and current egress reference | automatic | M-Lab NDT7, single stream |
+| `apple` | macOS public throughput and responsiveness under load | automatic | Apple `networkQuality`, single invocation |
+| `ookla` | nearby operator-side reference | automatic | official Ookla Speedtest CLI, dynamic server |
 | `cernet` | CERNET public station | IPv4 | LibreSpeed, three concurrent streams |
 | `qlu` | Qilu University of Technology station | IPv4 | LibreSpeed, three concurrent streams |
 | `tongji` | Tongji University station | IPv4 | LibreSpeed, three concurrent streams |
 
 NJU Campus and NJU Edge answer different questions. NJU Edge remains visible in
 the product model, but its official backend currently redirects terminal clients
-to a browser-verification challenge. SoundProbe must not bypass that protection or
+to a browser-verification challenge. soundprobe must not bypass that protection or
 publish a target that returns null. Edge selection therefore fails before
 measurement with a bounded explanation. IPv4 and IPv6 are independent
 measurements for supported stations; a dual plan expands them into ordered
 targets.
 
-The product is a macOS-first Go CLI. It has no daemon, privileged helper,
-account, cloud synchronization, automatic scheduler, or dependency on
+The product is a cross-platform Go CLI for macOS, Linux, and Windows. Apple
+`networkQuality` is a macOS-only optional provider; the core campus, M-Lab, and
+Ookla paths do not require macOS APIs. An unavailable optional provider is
+removed from a combined `run` plan before execution; an explicit provider
+command fails closed with a diagnostic. The product has no daemon, privileged
+helper, account, cloud synchronization, automatic scheduler, or dependency on
 soundVPN/SFM/NJUConnect.
 
 ## 2. Target identities
@@ -40,13 +46,15 @@ nju-campus-ipv6
 nju-edge-ipv4
 nju-edge-ipv6
 mlab
+apple
+ookla
 cernet-ipv4
 qlu-ipv4
 tongji-ipv4
 ```
 
 The legacy provider ID `campus` remains valid only so schema-v1 history written
-by SoundProbe 0.1 can still be read. New measurements use explicit IDs.
+by soundprobe 0.1 can still be read. New measurements use explicit IDs.
 
 Every new run summary includes an ordered `targets` array. The number and order
 of measurement objects must match the requested targets. Duplicate targets are
@@ -105,7 +113,7 @@ IPv6  http://test6.nju.edu.cn
 
 The service represents the path to NJU's public internet-facing edge, but its
 measurement backend is protected by an Anubis browser challenge. Standard
-LibreSpeed CLI receives a redirect and returns no measurement. SoundProbe displays
+LibreSpeed CLI receives a redirect and returns no measurement. soundprobe displays
 NJU Edge as `terminal unsupported`; `edge` and `--targets nju-edge` fail before
 starting a helper. Do not automate or bypass the browser challenge. Enable this
 target only after NJU publishes a terminal-compatible endpoint or explicit
@@ -123,7 +131,8 @@ Tongji  https://dev.tongji.edu.cn/speedtest
 
 These are optional independent targets. One station failure must not prevent
 later selected stations from running. The default `domestic` command runs
-CERNET, QLU, then Tongji sequentially.
+Tongji then QLU sequentially. CERNET remains available only through an explicit
+target argument while its backend is unreachable.
 
 ## 4. M-Lab behavior
 
@@ -138,6 +147,49 @@ bytes, duration, and final rates.
 
 M-Lab is a peer target, not a fallback or reference score. Its single-stream
 NDT7 result is not directly equivalent to three-stream LibreSpeed results.
+
+## 4.1 Apple networkQuality
+
+On macOS run `/usr/bin/networkQuality -c -s`; bind the active interface with `-I`
+when the network snapshot provides one. Parse the JSON result without treating
+the interface name as a server hostname. Store throughput converted from bits per
+second to Mbps, base RTT, overall/directional responsiveness RPM, flow count and
+the system helper version. A helper error is an attempted measurement with zero
+speeds and `failure.stage=helper`; incomplete success JSON is invalid output.
+
+Apple is a single automatic provider. It is not expanded into separate IPv4 and
+IPv6 tests. If the helper exposes a usable address family it is recorded as
+`ipFamily`; otherwise the active network context remains the source of interface
+information.
+
+## 4.2 Ookla Speedtest CLI
+
+Only the official Ookla `speedtest` executable is accepted. Preflight must inspect
+`speedtest --version`, require an Ookla/Speedtest identity, and reject the Python
+`speedtest-cli` output. When no explicit path is configured, inspect all PATH
+candidates and use the first validated official executable; `SOUNDPROBE_OOKLA_PATH`
+is an explicit override. Run `speedtest --format=json`, adding
+`--interface=<active-interface>` when available. Never pass license or GDPR
+acceptance flags automatically and never bundle or maintain a replacement
+implementation of the helper.
+
+When an explicit interactive `soundprobe ookla` command finds a missing or
+conflicting helper, the CLI may offer the official Homebrew sequence
+(`brew tap teamookla/speedtest`, `brew update`, `brew install speedtest --force`).
+The sequence runs only after an Enter confirmation, uses direct argument arrays
+instead of a shell, and never uninstalls an existing formula. Combined runs,
+JSON mode, and redirected input only report the unavailable optional provider.
+
+Parse server ID, sponsor, name/location, host, actual server address, external IP,
+address family, latency, jitter, byte counts and upload/download bandwidth. The
+server sponsor identifies the test server operator; it is not a claim about the
+user's access carrier. Ookla is one automatic provider, not an IPv4/IPv6-expanded
+pair, and is excluded from default daily stations until a user actively selects it.
+
+The durable measurement model may include `serverId`, `serverSponsor`,
+`responsivenessRpm`, `uploadResponsivenessRpm`, and
+`downloadResponsivenessRpm`. These fields are optional and must remain null/absent
+when a helper does not return them.
 
 ## 5. Planning and ordering
 
@@ -169,11 +221,14 @@ latency. IPv4-only stations are disabled in IPv6 mode.
 
 Recommendation rules:
 
-1. Select M-Lab.
-2. Select NJU Campus when at least one requested family is reachable.
-3. If Campus is not reachable, recommend M-Lab alone.
+1. Select NJU Campus when at least one requested family is reachable.
+2. Select M-Lab and Apple as automatic public references.
+3. If Campus is not reachable, keep M-Lab and Apple rather than silently
+   substituting another station.
 4. Display NJU Edge as disabled with its browser-verification explanation.
-5. Domestic stations are available but not preselected.
+5. Ookla is never recommended automatically; it requires an active user choice.
+6. Tongji and QLU are available but not preselected. CERNET is retained only
+   as an explicit compatibility target while its backend is unreachable.
 
 Recommendations set defaults only. They do not authorize silent fallback during
 measurement.
@@ -189,6 +244,8 @@ soundprobe domestic --targets LIST --family ipv4|dual
 soundprobe campus [--ipv4|--ipv6]
 soundprobe edge [--ipv4|--ipv6]
 soundprobe mlab
+soundprobe apple
+soundprobe ookla
 ```
 
 `--targets` accepts comma-separated station IDs. Invalid station IDs and
@@ -203,6 +260,11 @@ For each requested target:
   failure object;
 - cancellation stores null speeds and a cancelled failure;
 - targets not started after cancellation are marked skipped with null speeds.
+
+Optional measurement metadata includes `serverId`, `serverSponsor`,
+`responsivenessRpm`, `uploadResponsivenessRpm`, and
+`downloadResponsivenessRpm`; omitted helper fields remain null/absent. An
+automatic provider is executed once per plan, never once per address family.
 
 Run status:
 
@@ -272,15 +334,17 @@ A plan without M-Lab never requires M-Lab consent. Noninteractive execution
 without current consent fails before contacting M-Lab. LibreSpeed telemetry and
 sharing are always disabled.
 
-SoundProbe has no own analytics, remote result service, geolocation enrichment, or
+soundprobe has no own analytics, remote result service, geolocation enrichment, or
 ASN lookup.
 
 ## 10. Storage and export
 
-Store summaries under:
+Store summaries under the current user's platform configuration directory:
 
 ```text
-~/Library/Application Support/soundprobe/history/v1/<run-id>.json
+macOS:   ~/Library/Application Support/soundprobe/history/v1/<run-id>.json
+Linux:   ${XDG_CONFIG_HOME:-~/.config}/soundprobe/history/v1/<run-id>.json
+Windows: %AppData%\\soundprobe\\history\\v1\\<run-id>.json
 ```
 
 Directories are `0700`; files are `0600`. Use same-directory temporary files,
@@ -301,6 +365,13 @@ Resolve helpers in this order:
 2. repository-local `.tools/bin`;
 3. documented developer PATH fallback.
 
+Apple `networkQuality` is an OS-provided optional helper at
+`/usr/bin/networkQuality` and is never bundled. Ookla is an optional user-owned
+helper discovered as `speedtest` on PATH; only the official Ookla identity is
+accepted. `doctor --json` reports `campus` and `mlab` under required
+`providers`, and Apple/Ookla independently under `optionalProviders`. Missing
+optional helpers do not make base readiness false.
+
 Verify exact helper versions and include them in results. Production must not
 silently select an arbitrary newer PATH helper when a pinned libexec helper
 exists.
@@ -318,6 +389,9 @@ Automated tests use mock helpers and local HTTP fixtures. They cover:
 - NJU Campus identity, Edge unsupported handling, and no fallback;
 - domestic station identity and telemetry-disabled helper arguments;
 - M-Lab live event parsing and independent failure;
+- Apple `networkQuality` success/error/timeout, interface binding and RPM fields;
+- Ookla official version validation, dynamic server metadata, and Python
+  `speedtest-cli` rejection;
 - multi-target success, partial, failure, cancellation, and skipped results;
 - schema-v1 legacy history compatibility;
 - normalized CSV and JSONL export;

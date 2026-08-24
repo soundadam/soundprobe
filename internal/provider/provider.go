@@ -45,9 +45,11 @@ type Request struct {
 	Command  model.Command
 	Targets  []model.Provider
 	IPFamily string
+	Network  *model.NetworkContext
 	Label    *string
 	Note     *string
 	Progress ProgressSink
+	prepared bool
 }
 
 func (request Request) Report(event ProgressEvent) {
@@ -64,6 +66,14 @@ type PreflightRunner interface {
 	Preflight(context.Context, Request) error
 }
 
+// RequestPreparer performs provider preflight and removes optional providers
+// that are not available on the current host.  The CLI uses this hook before
+// opening the progress renderer so an unavailable Apple/Ookla helper cannot
+// abort an otherwise usable campus + M-Lab run.
+type RequestPreparer interface {
+	Prepare(context.Context, Request) (Request, error)
+}
+
 type MeasurementProvider interface {
 	Measure(context.Context, Request) (model.Measurement, error)
 }
@@ -76,6 +86,8 @@ type SummaryRunner struct {
 	ToolVersion string
 	Campus      MeasurementProvider
 	MLab        MeasurementProvider
+	Apple       MeasurementProvider
+	Ookla       MeasurementProvider
 	Providers   map[model.Provider]MeasurementProvider
 	Now         func() time.Time
 	NewRunID    func() (string, error)
@@ -83,24 +95,95 @@ type SummaryRunner struct {
 }
 
 func (runner SummaryRunner) Preflight(ctx context.Context, request Request) error {
-	providers, err := runner.providersFor(request)
-	if err != nil {
-		return err
+	_, err := runner.Prepare(ctx, request)
+	return err
+}
+
+// Prepare validates the selected providers before a run starts.  Apple
+// networkQuality and the Ookla CLI are optional cross-platform integrations:
+// for the combined run command an unavailable optional helper is removed from
+// the request, while an explicit `apple`/`ookla` command still fails closed.
+// This keeps the base education-network product usable on Linux and Windows
+// and with a conflicting Python `speedtest-cli` installed on macOS.
+func (runner SummaryRunner) Prepare(ctx context.Context, request Request) (Request, error) {
+	runner.setDefaults()
+	entries, err := runner.providersFor(request)
+	if err != nil && request.Command == model.CommandRun && len(request.Targets) > 0 {
+		// Resolve explicit targets one at a time so a missing optional helper can
+		// be removed without masking a missing required provider.
+		filtered := make([]model.Provider, 0, len(request.Targets))
+		for _, kind := range request.Targets {
+			candidate := request
+			candidate.Targets = []model.Provider{kind}
+			candidateEntries, candidateErr := runner.providersFor(candidate)
+			if candidateErr != nil {
+				if isOptionalUnavailable(kind, candidateErr) {
+					continue
+				}
+				return Request{}, candidateErr
+			}
+			if len(candidateEntries) == 1 {
+				filtered = append(filtered, kind)
+			}
+		}
+		if len(filtered) == 0 {
+			return Request{}, err
+		}
+		request.Targets = filtered
+		entries, err = runner.providersFor(request)
 	}
-	for _, entry := range providers {
+	if err != nil {
+		return Request{}, err
+	}
+
+	kept := make([]providerEntry, 0, len(entries))
+	for _, entry := range entries {
 		if preflight, ok := entry.provider.(ProviderPreflight); ok {
 			providerRequest := request
 			providerRequest.Targets = []model.Provider{entry.kind}
 			if err := preflight.Preflight(ctx, providerRequest); err != nil {
-				return err
+				if isOptionalUnavailableForCommand(request.Command, entry.kind, err) {
+					continue
+				}
+				return Request{}, err
 			}
 		}
+		kept = append(kept, entry)
 	}
-	return nil
+	if len(kept) == 0 {
+		return Request{}, fmt.Errorf("%w: no selected provider is available", ErrUnavailable)
+	}
+
+	providers := make([]model.Provider, len(kept))
+	for index, entry := range kept {
+		providers[index] = entry.kind
+	}
+	request.Targets = providers
+	request.prepared = true
+	return request, nil
+}
+
+func isOptionalProvider(kind model.Provider) bool {
+	return kind == model.ProviderApple || kind == model.ProviderOokla
+}
+
+func isOptionalUnavailable(kind model.Provider, err error) bool {
+	return isOptionalProvider(kind) && errors.Is(err, ErrUnavailable)
+}
+
+func isOptionalUnavailableForCommand(command model.Command, kind model.Provider, err error) bool {
+	return command == model.CommandRun && isOptionalUnavailable(kind, err)
 }
 
 func (runner SummaryRunner) Run(ctx context.Context, request Request) (model.RunSummary, error) {
 	runner.setDefaults()
+	if !request.prepared {
+		prepared, err := runner.Prepare(ctx, request)
+		if err != nil {
+			return model.RunSummary{}, err
+		}
+		request = prepared
+	}
 	providers, err := runner.providersFor(request)
 	if err != nil {
 		return model.RunSummary{}, err
@@ -112,6 +195,7 @@ func (runner SummaryRunner) Run(ctx context.Context, request Request) (model.Run
 		return model.RunSummary{}, fmt.Errorf("generate run ID: %w", err)
 	}
 	network := runner.Snapshot()
+	request.Network = &network
 	request.Report(ProgressEvent{Network: &network})
 
 	measurements := make([]model.Measurement, 0, len(providers))
@@ -134,6 +218,13 @@ func (runner SummaryRunner) Run(ctx context.Context, request Request) (model.Run
 		}
 	}
 
+	targets := cloneProviders(request.Targets)
+	if len(targets) == 0 {
+		targets = make([]model.Provider, len(providers))
+		for index, entry := range providers {
+			targets[index] = entry.kind
+		}
+	}
 	summary := model.RunSummary{
 		SchemaVersion: model.SchemaVersion,
 		RunID:         runID,
@@ -141,7 +232,7 @@ func (runner SummaryRunner) Run(ctx context.Context, request Request) (model.Run
 		StartedAt:     startedAt,
 		EndedAt:       runner.Now(),
 		Command:       request.Command,
-		Targets:       cloneProviders(request.Targets),
+		Targets:       targets,
 		Status:        model.DeriveRunStatus(measurements),
 		Label:         request.Label,
 		Note:          request.Note,
@@ -234,6 +325,12 @@ func (runner SummaryRunner) providersFor(request Request) ([]providerEntry, erro
 			if kind == model.ProviderCampus && implementation == nil {
 				implementation = runner.Campus
 			}
+			if kind == model.ProviderApple && implementation == nil {
+				implementation = runner.Apple
+			}
+			if kind == model.ProviderOokla && implementation == nil {
+				implementation = runner.Ookla
+			}
 			if err := appendProvider(kind, implementation); err != nil {
 				return nil, err
 			}
@@ -255,6 +352,22 @@ func (runner SummaryRunner) providersFor(request Request) ([]providerEntry, erro
 			return nil, err
 		}
 		if err := appendProvider(model.ProviderMLab, runner.MLab); err != nil {
+			return nil, err
+		}
+		// Keep the legacy two-provider fallback usable for callers that build a
+		// SummaryRunner without optional helpers, while the production runner
+		// includes Apple in its default plan.
+		if runner.Apple != nil {
+			if err := appendProvider(model.ProviderApple, runner.Apple); err != nil {
+				return nil, err
+			}
+		}
+	case model.CommandApple:
+		if err := appendProvider(model.ProviderApple, runner.Apple); err != nil {
+			return nil, err
+		}
+	case model.CommandOokla:
+		if err := appendProvider(model.ProviderOokla, runner.Ookla); err != nil {
 			return nil, err
 		}
 	default:

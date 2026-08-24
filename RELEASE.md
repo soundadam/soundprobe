@@ -1,38 +1,79 @@
-# Releasing SoundProbe through Homebrew
+# Releasing soundprobe
 
-The release path is intentionally staged:
+Releases are automated: push a `v*` tag, CI runs GoReleaser, and the tap
+updates itself.
 
-1. create and push a stable source tag in the public upstream repository;
-2. attach the deterministic source archive and checksum to that GitHub Release;
-3. publish and maintain the Formula in `soundadam/homebrew-tap`;
-4. consider `homebrew/core` only after macOS acceptance evidence and sufficient
-   independent use.
+```text
+git tag v0.3.0 && git push origin v0.3.0
+        │
+        ▼
+.github/workflows/release.yml (GitHub Actions)
+        │
+        ▼
+GoReleaser (.goreleaser.yaml)
+  ├─ builds darwin/linux/windows × amd64/arm64 (CGO_ENABLED=0)
+  ├─ archives (tar.gz, zip on Windows) + checksums.txt
+  ├─ GitHub Release with a changelog grouped by feat/fix/docs
+  └─ pushes Casks/soundprobe.rb to soundadam/homebrew-tap
+```
 
-The Formula homepage and release asset URL must resolve anonymously before the
-Formula is published.
+Users install with:
 
-## 1. Release prerequisites
+```sh
+brew install --cask soundadam/tap/soundprobe
+```
 
-Use a supported macOS machine for final acceptance. Confirm:
+## Principles (unchanged from the manual era)
+
+- **Never release from a dirty worktree.** The tag must point at a commit
+  that passed automated and operator acceptance.
+- **CI never runs a real bandwidth measurement.** `make test-offline` and
+  all packaging tests use local fixtures only.
+- **Real measurements are operator acceptance**, performed manually from
+  [TESTING.md](TESTING.md) before tagging.
+- **Release assets are immutable.** Once a cask or Formula references a
+  checksum, never edit or replace the asset; ship a new version instead.
+- **Helper licensing stays explicit.** The archives contain only the MIT
+  soundprobe binary plus `LICENSE`, `README.md`, and
+  `THIRD_PARTY_NOTICES.md`. The LibreSpeed helper (LGPL-3.0-only) and ndt7
+  helper (Apache-2.0) are never bundled or auto-downloaded; the cask
+  caveats say so.
+
+## 1. One-time setup
+
+- A public `soundadam/homebrew-tap` repository must exist.
+- Configure the `HOMEBREW_TAP_GITHUB_TOKEN` secret in
+  `soundadam/soundprobe` (Settings > Secrets and variables > Actions): a
+  fine-grained PAT with "Contents: read and write" on
+  `soundadam/homebrew-tap`. Details are commented in
+  [.github/workflows/release.yml](.github/workflows/release.yml).
+- If the tap previously shipped `Formula/soundprobe.rb`, add a
+  `tap_migrations.json` at the tap root (`{"soundprobe": "soundprobe"}`)
+  and remove the old Formula so users upgrade to the cask cleanly.
+
+## 2. Before tagging
+
+On a supported macOS machine:
 
 ```sh
 make test-offline
 GOTOOLCHAIN=auto go test -race ./...
-make tools
 make build
 ./bin/soundprobe doctor --json
 ```
 
-Perform the real operator tests from [TESTING.md](TESTING.md):
+Perform the real operator tests from [TESTING.md](TESTING.md) (NJU IPv4 /
+IPv6, M-Lab after consent, combined run, partial failure, Ctrl-C and
+history readback).
 
-- NJU IPv4 success;
-- NJU explicit IPv6 success or expected no-IPv6 failure;
-- M-Lab success after consent;
-- combined sequential success;
-- partial provider failure behavior;
-- Ctrl-C cancellation and history readback.
+Optionally rehearse the release locally:
 
-Review:
+```sh
+make release-check   # validate .goreleaser.yaml
+make snapshot        # full multi-platform build into dist/, publishes nothing
+```
+
+Finally confirm the worktree is clean:
 
 ```sh
 git diff --check
@@ -40,130 +81,71 @@ go mod verify
 git status --short
 ```
 
-Do not release from a dirty worktree.
-
-## 2. Create the stable tag
+## 3. Tag and push
 
 For version `0.3.0`:
 
 ```sh
 git switch main
 git pull --ff-only
-git tag -a v0.3.0 -m "SoundProbe v0.3.0"
+git tag -a v0.3.0 -m "soundprobe v0.3.0"
 git push origin v0.3.0
 ```
 
-A signed tag is preferred. The tag must point at the exact commit that passed
-operator and automated acceptance.
+A signed tag is preferred. Pushing the tag is the release; everything after
+this point is automated.
 
-## 3. Build the source release and Formula
+## 4. Verify the release
+
+When the `Release` workflow finishes:
+
+- the GitHub Release page and asset URLs return HTTP 200 anonymously;
+- `checksums.txt` matches the uploaded archives;
+- `soundadam/homebrew-tap` received a commit updating
+  `Casks/soundprobe.rb` with the new version and sha256.
+
+Then, on macOS:
+
+```sh
+brew update
+brew install --cask soundadam/tap/soundprobe
+soundprobe version
+soundprobe doctor
+```
+
+Cask-level checks are offline; a real measurement afterwards is optional
+operator verification, never CI.
+
+Prerelease tags (e.g. `v0.4.0-rc1`) create a GitHub prerelease and skip the
+tap update.
+
+## 5. Manual fallback
+
+If CI or GoReleaser is unavailable, the pre-automation flow still works and
+is kept in-tree:
 
 ```sh
 make release VERSION=0.3.0
 ```
 
-This produces ignored local artifacts:
+This runs [scripts/build-release.sh](scripts/build-release.sh) to produce a
+deterministic source `dist/soundprobe-0.3.0.tar.gz` and renders the
+source-build Formula from
+[packaging/homebrew/soundprobe.rb.tmpl](packaging/homebrew/soundprobe.rb.tmpl)
+via
+[scripts/render-homebrew-formula.sh](scripts/render-homebrew-formula.sh).
+Upload the archive and its `.sha256` to the GitHub Release by hand, then
+copy the Formula into the tap as `Formula/soundprobe.rb`. That Formula
+builds soundprobe and both helpers from source and carries
+`license all_of: ["MIT", "LGPL-3.0-only", "Apache-2.0"]`; its `test do`
+block is offline. `scripts/test-homebrew-template.sh` and
+`scripts/test-release-artifact.sh` keep this path exercised in
+`make test-offline`.
 
-```text
-dist/soundprobe-0.3.0.tar.gz
-dist/Formula/soundprobe.rb
-```
+## 6. `homebrew/core` consideration
 
-The archive is generated deterministically from tag `v0.3.0`; its SHA-256 is
-inserted into the rendered Formula. Re-run the command and verify the archive
-hash is unchanged.
-
-Create the immutable GitHub Release in `soundadam/soundprobe` from tag `v0.3.0`.
-
-Upload:
-
-```text
-soundprobe-0.3.0.tar.gz
-soundprobe-0.3.0.tar.gz.sha256
-```
-
-The checksum file contains the archive SHA-256 and filename. Confirm the public
-release page and archive URL both return HTTP 200 without GitHub authentication.
-
-Do not edit or replace the asset after publishing the Formula. A changed source
-requires a new version or Formula revision and a new checksum.
-
-## 4. Test the Formula locally
-
-With Homebrew updated on macOS:
-
-```sh
-brew update
-brew style ./dist/Formula/soundprobe.rb
-
-test_tap=soundadam/soundprobe-rc-test
-brew tap-new --no-git "$test_tap"
-cp ./dist/Formula/soundprobe.rb "$(brew --repo "$test_tap")/Formula/soundprobe.rb"
-brew audit --strict --new --formula "$test_tap/soundprobe"
-HOMEBREW_NO_INSTALL_FROM_API=1 brew install --build-from-source "$test_tap/soundprobe"
-brew test "$test_tap/soundprobe"
-soundprobe doctor
-brew uninstall soundprobe
-brew untap "$test_tap"
-```
-
-Also test upgrades from the previous released Formula once a previous version
-exists:
-
-```sh
-brew upgrade soundprobe
-soundprobe version
-soundprobe doctor
-```
-
-Formula tests are offline. They must not run a bandwidth measurement.
-
-## 5. Publish the tap
-
-Maintain a public repository named:
-
-```text
-soundadam/homebrew-tap
-```
-
-Copy the validated Formula to:
-
-```text
-Formula/soundprobe.rb
-```
-
-Commit and push it. Users then install with:
-
-```sh
-brew tap soundadam/tap
-brew install soundprobe
-```
-
-The fully qualified equivalent is:
-
-```sh
-brew install soundadam/tap/soundprobe
-```
-
-Document uninstall and rollback:
-
-```sh
-brew uninstall soundprobe
-brew extract --version=0.3.0 soundprobe soundadam/tap
-```
-
-## 6. Bottles
-
-The source Formula is sufficient for the first public release. Bottles may be
-added after source builds pass consistently on supported
-Apple Silicon and Intel macOS runners. Bottle generation must come from trusted
-CI, include Homebrew-generated checksums, and never embed user history or consent
-files.
-
-## 7. `homebrew/core` consideration
-
-Do not advertise `brew install soundprobe` from core until Homebrew accepts the
-Formula. A future submission should demonstrate:
+Do not advertise `brew install soundprobe` from core until Homebrew accepts
+the Formula. A future submission should demonstrate:
 
 - a public, stable, immutable release;
 - an actively maintained upstream project;
@@ -171,7 +153,7 @@ Formula. A future submission should demonstrate:
 - checksummed and locked source dependencies;
 - meaningful offline Formula tests;
 - no runtime downloads or self-updates;
-- clear licensing for SoundProbe and both installed helper executables.
+- clear licensing for soundprobe and both installed helper executables.
 
-Until then, the supported installation command is through
+Until then, the supported installation path is through
 `soundadam/homebrew-tap`.

@@ -1,0 +1,76 @@
+---
+title: "常见问题"
+sidebarTitle: "FAQ"
+description: "关于 soundprobe 设计选择与使用的常见疑问"
+icon: "circle-question"
+---
+
+<AccordionGroup>
+  <Accordion title="为什么没有一个总分？">
+    因为不同目标测的是不同的路径、用的是不同的方法，压成一个数字必然
+    丢失"到底哪里慢"的信息。soundprobe 的立场是每个目标独立回答一个
+    问题。展开讨论见[网络测速在测什么](/concepts/what-speed-tests-measure)。
+  </Accordion>
+  <Accordion title="NJU Campus 测出 800 Mbps，M-Lab 只有 200 Mbps，哪个是对的？">
+    都对。前者是校内路径 + LibreSpeed 三并发流，后者是公网出口 +
+    NDT7 单流——路径和方法都不同，数值不可直接横向排名。这两个数字
+    放在一起恰恰说明：校内链路健康，瓶颈（如果有）在出口方向。见
+    [为什么不同工具测出的数字不一样](/concepts/why-results-differ)。
+  </Accordion>
+  <Accordion title="教育网站点的“三流”是三条物理线路吗？">
+    不是。三流是**三个并发 HTTP 请求**，是 LibreSpeed 的测量方法，
+    不代表存在三条物理线路，也不表示服务器带宽异常大。
+  </Accordion>
+  <Accordion title="为什么 M-Lab 测试要我先输入 accept？">
+    M-Lab 会公开并无限期保留测试结果和你的公网 IP，这是一个用户必须
+    自己做的隐私决定。soundprobe 采取 fail-closed：没有显式同意就不
+    接触 M-Lab。见 [M-Lab 隐私与同意](/reference/mlab-privacy)。
+  </Accordion>
+  <Accordion title="为什么不自动安装 Ookla CLI？">
+    Ookla CLI 有自己的许可与 GDPR 条款，接受与否应由用户决定；
+    soundprobe 不代替用户接受任何第三方条款，也不捆绑或维护 Ookla
+    协议的替代实现。交互式 `soundprobe ookla` 在你按 Enter 确认后才
+    会执行官方 Homebrew 安装序列。见[安装](/getting-started/installation)。
+  </Accordion>
+  <Accordion title="为什么拒绝 Python speedtest-cli？">
+    它是逆向 Ookla 协议的第三方实现，上游已停止维护，数值与官方
+    客户端常有偏差。soundprobe 校验 `speedtest --version` 的官方标识，
+    发现是 Python 工具时明确拒绝，而不是静默使用。
+  </Accordion>
+  <Accordion title="为什么 NJU Edge 显示“终端不支持”？">
+    其测速后端有浏览器验证，标准终端客户端只会被重定向。soundprobe
+    不绕过验证，也不发布一个只会返回 null 的目标，所以如实显示不
+    支持并在测量前失败。
+  </Accordion>
+  <Accordion title="为什么 Ookla 结果里的运营商和我的宽带不一致？">
+    `serverSponsor` 是**测速服务器**的运营方，不是你的接入运营商。
+    soundprobe 不做客户端运营商识别、ASN 或地理定位。
+  </Accordion>
+  <Accordion title="M-Lab 为什么有时返回国内节点、有时返回境外节点？">
+    M-Lab Locate 服务按当前出口动态分配节点，soundprobe 不承诺特定
+    方向，界面和 JSON 始终显示实际返回的节点。解读速率前先看服务器
+    位置。
+  </Accordion>
+  <Accordion title="所有目标是同时测的吗？">
+    不是。所有选中目标按显示顺序串行执行，避免互相争抢带宽污染结果。
+  </Accordion>
+  <Accordion title="历史数据存在哪里？会上传吗？">
+    只存本地，按平台放在用户配置目录的 `soundprobe/history/v1/` 下，
+    目录权限 `0700`、文件 `0600`，永不自动上传或清理。见
+    [JSON 输出与自动化](/reference/json-and-automation)。
+  </Accordion>
+  <Accordion title="可以在 CI 里跑真实测速吗？">
+    不建议，soundprobe 自己也不这么做：仓库的测试与发布流程只使用
+    fixtures 和 mock helper，真实带宽测试由对应平台的操作者单独验收。
+    带宽测试放进 CI 既慢又不可复现。
+  </Accordion>
+  <Accordion title="Linux/Windows 支持到什么程度？">
+    核心 CLI（NJU Campus、M-Lab、教育网站点、Ookla 可选）完全跨平台，
+    不依赖 macOS API；只有 Apple `networkQuality` 是 macOS 专属可选
+    provider，其他平台的组合运行会自动移除它。Homebrew Formula 当前
+    只覆盖 macOS，其他平台用 release 二进制或源码构建。
+  </Accordion>
+</AccordionGroup>
+
+没找到答案？欢迎在
+[GitHub Issues](https://github.com/soundadam/soundprobe/issues) 提问。

@@ -1,12 +1,14 @@
 package ui
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/soundadam/soundprobe/internal/model"
+	"github.com/soundadam/soundprobe/internal/preferences"
 	"github.com/soundadam/soundprobe/internal/target"
 )
 
@@ -15,11 +17,12 @@ func TestSelectorRecommendsCampusWhenReachable(t *testing.T) {
 		{StationID: "nju-campus", Family: "ipv4", Status: target.ProbeReachable},
 		{StationID: "nju-edge", Family: "ipv4", Status: target.ProbeReachable},
 	})
-	if !selector.selected["nju-campus"] || !selector.selected["mlab"] || selector.selected["nju-edge"] {
+	appleExpected := runtime.GOOS == "darwin"
+	if !selector.selected["nju-campus"] || !selector.selected["mlab"] || selector.selected["apple"] != appleExpected || selector.selected["ookla"] || selector.selected["nju-edge"] {
 		t.Fatalf("selection = %#v", selector.selected)
 	}
 	view := selector.View().Content
-	for _, expected := range []string{"select measurement targets", "NJU Campus", "NJU Edge", "M-Lab", "[4] IPv4", "Space toggle"} {
+	for _, expected := range []string{"soundprobe", "select measurement targets", "NJU Campus", "NJU Edge", "M-Lab", "[4] IPv4", "Space toggle"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("view missing %q:\n%s", expected, view)
 		}
@@ -31,8 +34,22 @@ func TestSelectorDoesNotRecommendUnsupportedEdge(t *testing.T) {
 		{StationID: "nju-campus", Family: "ipv4", Status: target.ProbeUnreachable},
 		{StationID: "nju-edge", Family: "ipv4", Status: target.ProbeReachable},
 	})
-	if selector.selected["nju-campus"] || selector.selected["nju-edge"] || !selector.selected["mlab"] {
+	appleExpected := runtime.GOOS == "darwin"
+	if selector.selected["nju-campus"] || selector.selected["nju-edge"] || !selector.selected["mlab"] || selector.selected["apple"] != appleExpected {
 		t.Fatalf("selection = %#v", selector.selected)
+	}
+}
+
+func TestConfiguredSelectorShowsOnlyDailyStationsInPriorityOrder(t *testing.T) {
+	selector := newSelectorModelConfigured("test", []target.ProbeResult{
+		{StationID: "tongji", Family: "ipv4", Status: target.ProbeReachable},
+	}, preferences.Config{SchemaVersion: preferences.SchemaVersion, Language: preferences.LanguageChinese, DailyStations: []string{"tongji", "qlu"}})
+	if len(selector.stations) != 2 || selector.stations[0].ID != "tongji" || selector.stations[1].ID != "qlu" {
+		t.Fatalf("stations = %#v", selector.stations)
+	}
+	view := selector.View().Content
+	if !strings.Contains(view, "选择测速站") || !strings.Contains(view, "同济大学 · 上海") || strings.Contains(view, "M-Lab") {
+		t.Fatalf("configured view:\n%s", view)
 	}
 }
 

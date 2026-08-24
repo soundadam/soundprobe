@@ -34,10 +34,29 @@ license.
 - License: Apache License 2.0
 - Installed executable: `libexec/soundprobe/ndt7-client`
 
-SoundProbe consumes the helper's JSON event stream and identifies the client as
+soundprobe consumes the helper's JSON event stream and identifies the client as
 `soundprobe`. Because the upstream CLI has no version-reporting command, packaging
 installs `ndt7-client.version` containing `v0.10.1`; runtime preflight verifies
 that sidecar before a test. The Homebrew Formula installs the upstream license.
+
+## Apple networkQuality
+
+Apple's `/usr/bin/networkQuality` is an operating-system-provided executable on
+macOS. soundprobe does not redistribute it, link against it, or accept terms on
+the user's behalf. Product documentation links to Apple's public NetworkQuality
+explanation.
+
+## Ookla Speedtest CLI
+
+The official Ookla `speedtest` CLI is an optional user-installed executable. It
+is not bundled, downloaded, or a Homebrew Formula dependency of soundprobe.
+soundprobe validates the executable identity and refuses the unrelated Python
+`speedtest-cli`. Ookla licensing and any first-run license/GDPR acceptance remain
+between the user and Ookla; soundprobe never passes acceptance flags
+automatically. In an explicit interactive command, soundprobe may display the
+official Homebrew installation commands after a preflight failure, but executes
+them only after Enter and never runs uninstall commands. See
+<https://www.speedtest.net/apps/cli> for official distribution and terms.
 
 ## Bubble Tea
 

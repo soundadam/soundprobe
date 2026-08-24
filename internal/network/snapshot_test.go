@@ -24,6 +24,19 @@ func TestParseLinuxRoute(t *testing.T) {
 	}
 }
 
+func TestParseWindowsRoute(t *testing.T) {
+	interfaceAddress, gateway := parseWindowsRoute(`
+IPv4 Route Table
+===========================================================================
+Active Routes:
+Network Destination        Netmask          Gateway       Interface  Metric
+          0.0.0.0          0.0.0.0     192.168.1.1     192.168.1.23     25
+`)
+	if interfaceAddress != "192.168.1.23" || gateway != "192.168.1.1" {
+		t.Fatalf("route = %q/%q", interfaceAddress, gateway)
+	}
+}
+
 func TestParseDNS(t *testing.T) {
 	darwin := parseDarwinDNS(`
 resolver #1
@@ -41,6 +54,13 @@ resolver #2
 	wantLinux := []string{"1.1.1.1", "8.8.8.8"}
 	if !reflect.DeepEqual(linux, wantLinux) {
 		t.Fatalf("resolv.conf DNS = %#v", linux)
+	}
+
+	windows := parseWindowsDNS(`DNS Servers . . . . . . . . . . . : 192.168.1.1
+                                       1.1.1.1
+`)
+	if !reflect.DeepEqual(windows, []string{"1.1.1.1", "192.168.1.1"}) {
+		t.Fatalf("Windows DNS = %#v", windows)
 	}
 }
 

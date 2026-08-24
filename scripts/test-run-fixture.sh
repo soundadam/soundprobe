@@ -20,7 +20,9 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 helper_dir="$workdir/app/libexec/soundprobe"
-mkdir -p "$workdir/app/bin" "$helper_dir" "$workdir/home" "$workdir/work"
+ookla_bin="$workdir/ookla-bin"
+bad_ookla_bin="$workdir/bad-ookla-bin"
+mkdir -p "$workdir/app/bin" "$helper_dir" "$ookla_bin" "$bad_ookla_bin" "$workdir/home" "$workdir/work"
 cp "$BINARY" "$workdir/app/bin/soundprobe"
 
 cat > "$helper_dir/librespeed-cli" <<EOF
@@ -53,9 +55,50 @@ chmod 0755 "$helper_dir/ndt7-client"
 printf '%s\n' 'v0.10.1' > "$helper_dir/ndt7-client.version"
 chmod 0600 "$helper_dir/ndt7-client.version"
 
-consent_dir="$workdir/home/Library/Application Support/soundprobe"
-mkdir -p "$consent_dir"
-cat > "$consent_dir/consent.json" <<'EOF'
+apple_fixture="$workdir/networkquality.json"
+cat > "$apple_fixture" <<'EOF'
+{"base_rtt":12.5,"dl_flows":8,"dl_throughput":100000000,"ul_flows":4,"ul_throughput":20000000,"responsiveness":350,"dl_responsiveness":360,"ul_responsiveness":340,"interface_name":"utun6","os_version":"fixture"}
+EOF
+cat > "$helper_dir/networkQuality" <<EOF
+#!/bin/sh
+if [ "\${1:-}" = "-h" ]; then
+  printf '%s\n' 'networkQuality help'
+  exit 0
+fi
+cat "$apple_fixture"
+EOF
+chmod 0755 "$helper_dir/networkQuality"
+
+cat > "$ookla_bin/speedtest" <<'EOF'
+#!/bin/sh
+if [ "${1:-}" = "--version" ]; then
+  printf '%s\n' 'Speedtest by Ookla 1.2.0.84'
+  exit 0
+fi
+printf '%s\n' '{"download":{"bandwidth":1000000},"upload":{"bandwidth":500000},"server":{"id":30852,"name":"Duke Kunshan University","sponsor":"Duke Kunshan University","host":"speedtest.dukekunshan.edu.cn:8080","ip":"180.208.59.230"},"interface":{"externalIp":"198.51.100.42"},"ping":{"latency":10,"jitter":1}}'
+EOF
+chmod 0755 "$ookla_bin/speedtest"
+
+cat > "$bad_ookla_bin/speedtest" <<'EOF'
+#!/bin/sh
+if [ "${1:-}" = "--version" ]; then
+  printf '%s\n' 'speedtest-cli 2.1.4'
+  exit 0
+fi
+exit 1
+EOF
+chmod 0755 "$bad_ookla_bin/speedtest"
+
+# The consent file must land where os.UserConfigDir points on the platform
+# actually running this script: macOS uses ~/Library/Application Support and
+# Linux uses XDG_CONFIG_HOME, which we pin below so CI runners are hermetic.
+XDG_CONFIG_HOME="$workdir/home/.config"
+export XDG_CONFIG_HOME
+for consent_dir in \
+  "$workdir/home/Library/Application Support/soundprobe" \
+  "$XDG_CONFIG_HOME/soundprobe"; do
+  mkdir -p "$consent_dir"
+  cat > "$consent_dir/consent.json" <<'EOF'
 {
   "schemaVersion": 1,
   "provider": "mlab",
@@ -64,14 +107,15 @@ cat > "$consent_dir/consent.json" <<'EOF'
   "toolVersion": "fixture"
 }
 EOF
-chmod 0600 "$consent_dir/consent.json"
+  chmod 0600 "$consent_dir/consent.json"
+done
 
 run_command() {
   output=$1
   shift
   (
     cd "$workdir/work"
-    HOME="$workdir/home" PATH="$PATH" \
+    HOME="$workdir/home" PATH="$ookla_bin:$PATH" SOUNDPROBE_OOKLA_PATH="$ookla_bin/speedtest" SOUNDPROBE_NETWORKQUALITY_PATH="$helper_dir/networkQuality" \
       "$workdir/app/bin/soundprobe" "$@"
   ) > "$output"
 }
@@ -79,10 +123,16 @@ run_command() {
 run_command "$workdir/doctor.json" doctor --json
 run_command "$workdir/success.json" run --no-save --json
 
+(
+  cd "$workdir/work"
+  HOME="$workdir/home" PATH="$bad_ookla_bin:$PATH" SOUNDPROBE_OOKLA_PATH="$bad_ookla_bin/speedtest" SOUNDPROBE_NETWORKQUALITY_PATH="$helper_dir/networkQuality" \
+    "$workdir/app/bin/soundprobe" run --targets nju-campus,mlab,apple,ookla --no-save --json
+) > "$workdir/python-speedtest.json"
+
 set +e
 (
   cd "$workdir/work"
-  HOME="$workdir/home" PATH="$PATH" SOUNDPROBE_NDT7_FIXTURE=failure \
+  HOME="$workdir/home" PATH="$ookla_bin:$PATH" SOUNDPROBE_OOKLA_PATH="$ookla_bin/speedtest" SOUNDPROBE_NETWORKQUALITY_PATH="$helper_dir/networkQuality" SOUNDPROBE_NDT7_FIXTURE=failure \
     "$workdir/app/bin/soundprobe" run --no-save --json
 ) > "$workdir/partial.json"
 partial_exit=$?
@@ -102,7 +152,7 @@ import pathlib
 import sys
 
 root = pathlib.Path(sys.argv[1])
-for name in ("doctor", "success", "partial", "saved", "last", "history"):
+for name in ("doctor", "success", "python-speedtest", "partial", "saved", "last", "history"):
     raw = (root / f"{name}.json").read_bytes()
     if b"\x1b[" in raw:
         raise SystemExit(f"run fixture: ANSI escape found in {name}.json")
@@ -111,16 +161,26 @@ doctor = json.loads((root / "doctor.json").read_text())
 assert doctor["ready"] is True
 assert doctor["combinedReady"] is True
 assert doctor["providers"] == {"campus": "ready", "mlab": "ready"}
+assert doctor["optionalProviders"]["apple"] == "ready"
+assert doctor["optionalProviders"]["ookla"] == "ready"
 assert doctor["consentAccepted"] is True
 
 success = json.loads((root / "success.json").read_text())
 assert success["status"] == "success"
-assert success["targets"] == ["nju-campus-ipv4", "mlab"]
-assert [m["provider"] for m in success["measurements"]] == ["nju-campus-ipv4", "mlab"]
+assert success["targets"] == ["nju-campus-ipv4", "mlab", "apple-networkquality"]
+assert [m["provider"] for m in success["measurements"]] == ["nju-campus-ipv4", "mlab", "apple-networkquality"]
 assert success["measurements"][0]["method"] == "librespeed-three-stream"
 assert success["measurements"][1]["method"] == "ndt7-single-stream"
 assert success["measurements"][1]["downloadMbps"] == 80
 assert success["measurements"][1]["uploadMbps"] == 40
+assert success["measurements"][2]["method"] == "apple-networkquality"
+assert success["measurements"][2]["downloadMbps"] == 100
+assert success["measurements"][2]["uploadMbps"] == 20
+
+python_speedtest = json.loads((root / "python-speedtest.json").read_text())
+assert python_speedtest["status"] == "success"
+assert python_speedtest["targets"] == ["nju-campus-ipv4", "mlab", "apple-networkquality"]
+assert [m["provider"] for m in python_speedtest["measurements"]] == ["nju-campus-ipv4", "mlab", "apple-networkquality"]
 
 partial = json.loads((root / "partial.json").read_text())
 assert partial["status"] == "partial"
@@ -151,7 +211,8 @@ root = pathlib.Path(sys.argv[1])
 env = os.environ.copy()
 env.update({
     "HOME": str(root / "home"),
-    "PATH": env["PATH"],
+    "PATH": str(root / "ookla-bin") + os.pathsep + env["PATH"],
+    "SOUNDPROBE_NETWORKQUALITY_PATH": str(root / "app" / "libexec" / "soundprobe" / "networkQuality"),
     "SOUNDPROBE_FIXTURE_DELAY": "0.15",
     "TERM": "xterm-256color",
 })

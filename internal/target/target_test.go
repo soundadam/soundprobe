@@ -53,6 +53,22 @@ func TestNewPlanDeduplicatesRepeatedStation(t *testing.T) {
 	}
 }
 
+func TestAutomaticProvidersRunOnceForDualFamily(t *testing.T) {
+	plan, err := NewPlan([]string{"nju-campus", "mlab", "apple", "ookla"}, FamilyDual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []model.Provider{model.ProviderNJUCampusIPv4, model.ProviderNJUCampusIPv6, model.ProviderMLab, model.ProviderApple, model.ProviderOokla}
+	if len(plan.Providers) != len(want) {
+		t.Fatalf("providers = %#v, want %#v", plan.Providers, want)
+	}
+	for index := range want {
+		if plan.Providers[index] != want[index] {
+			t.Fatalf("providers[%d] = %q, want %q", index, plan.Providers[index], want[index])
+		}
+	}
+}
+
 func TestProbeUsesConfiguredBackend(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 		if request.URL.Path != "/backend/empty.php" {
@@ -73,5 +89,12 @@ func TestLabelsExposeStationAndFamily(t *testing.T) {
 	}
 	if got := Label(model.ProviderMLab); got != "M-Lab" {
 		t.Fatalf("label = %q", got)
+	}
+}
+
+func TestProbeSelectedDoesNotProbeUnconfiguredStations(t *testing.T) {
+	results := ProbeSelected(context.Background(), []string{"mlab"}, time.Second)
+	if len(results) != 1 || results[0].StationID != "mlab" || results[0].Status != ProbeAutomatic {
+		t.Fatalf("results = %#v", results)
 	}
 }

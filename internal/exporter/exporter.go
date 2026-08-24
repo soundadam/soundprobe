@@ -42,6 +42,7 @@ func Write(path, format string, summaries []model.RunSummary) error {
 			"target", "method", "measurement_status", "ip_family", "server_name", "server_fqdn",
 			"ping_ms", "jitter_ms", "download_mbps", "upload_mbps", "download_bytes", "upload_bytes",
 			"duration_ms", "concurrency", "helper_version", "failure_stage", "failure_code", "failure_message",
+			"server_id", "server_sponsor", "responsiveness_rpm", "upload_responsiveness_rpm", "download_responsiveness_rpm",
 		}
 		if err := writer.Write(header); err != nil {
 			return fmt.Errorf("write CSV header: %w", err)
@@ -80,6 +81,11 @@ func Write(path, format string, summaries []model.RunSummary) error {
 					failureStage,
 					failureCode,
 					failureMessage,
+					int64Value(measurement.ServerID),
+					stringValue(measurement.ServerSponsor),
+					floatValue(measurement.ResponsivenessRPM),
+					floatValue(measurement.UploadResponsivenessRPM),
+					floatValue(measurement.DownloadResponsivenessRPM),
 				}
 				if err := writer.Write(row); err != nil {
 					return fmt.Errorf("write CSV row: %w", err)
