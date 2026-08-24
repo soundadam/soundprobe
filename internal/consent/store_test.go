@@ -44,7 +44,13 @@ func TestAcceptStatusAndRevoke(t *testing.T) {
 func TestDefaultPathPreservesLegacyConsent(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	legacy := filepath.Join(home, "Library", "Application Support", "njuprobe", "consent.json")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("AppData", filepath.Join(home, "AppData", "Roaming"))
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := filepath.Join(configDir, "njuprobe", "consent.json")
 	if err := os.MkdirAll(filepath.Dir(legacy), 0o700); err != nil {
 		t.Fatal(err)
 	}

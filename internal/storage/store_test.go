@@ -65,7 +65,13 @@ func TestListNewestFirstAndLimit(t *testing.T) {
 func TestDefaultHistoryDirPreservesLegacyData(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	legacy := filepath.Join(home, "Library", "Application Support", "njuprobe", "history", "v1")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("AppData", filepath.Join(home, "AppData", "Roaming"))
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy := filepath.Join(configDir, "njuprobe", "history", "v1")
 	if err := os.MkdirAll(legacy, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +84,7 @@ func TestDefaultHistoryDirPreservesLegacyData(t *testing.T) {
 		t.Fatalf("DefaultHistoryDir() = %q, want legacy %q", path, legacy)
 	}
 
-	current := filepath.Join(home, "Library", "Application Support", "soundprobe", "history", "v1")
+	current := filepath.Join(configDir, "soundprobe", "history", "v1")
 	if err := os.MkdirAll(current, 0o700); err != nil {
 		t.Fatal(err)
 	}
