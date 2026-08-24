@@ -89,9 +89,16 @@ exit 1
 EOF
 chmod 0755 "$bad_ookla_bin/speedtest"
 
-consent_dir="$workdir/home/Library/Application Support/soundprobe"
-mkdir -p "$consent_dir"
-cat > "$consent_dir/consent.json" <<'EOF'
+# The consent file must land where os.UserConfigDir points on the platform
+# actually running this script: macOS uses ~/Library/Application Support and
+# Linux uses XDG_CONFIG_HOME, which we pin below so CI runners are hermetic.
+XDG_CONFIG_HOME="$workdir/home/.config"
+export XDG_CONFIG_HOME
+for consent_dir in \
+  "$workdir/home/Library/Application Support/soundprobe" \
+  "$XDG_CONFIG_HOME/soundprobe"; do
+  mkdir -p "$consent_dir"
+  cat > "$consent_dir/consent.json" <<'EOF'
 {
   "schemaVersion": 1,
   "provider": "mlab",
@@ -100,7 +107,8 @@ cat > "$consent_dir/consent.json" <<'EOF'
   "toolVersion": "fixture"
 }
 EOF
-chmod 0600 "$consent_dir/consent.json"
+  chmod 0600 "$consent_dir/consent.json"
+done
 
 run_command() {
   output=$1
