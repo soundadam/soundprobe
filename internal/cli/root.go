@@ -261,9 +261,9 @@ func (app *App) newShowCommand(state *execution) *cobra.Command {
 func (app *App) newExportCommand(state *execution) *cobra.Command {
 	var format, output string
 	cmd := &cobra.Command{
-		Use:     "export",
-		Short:   "Export saved runs as JSONL or CSV",
-		Long:    `Export writes every saved run to a file, one of --format jsonl or csv.`,
+		Use:   "export",
+		Short: "Export saved runs as JSONL or CSV",
+		Long:  `Export writes every saved run to a file, one of --format jsonl or csv.`,
 		Example: `  soundprobe export --format jsonl --output runs.jsonl
   soundprobe export --format csv --output runs.csv`,
 		GroupID: groupRecords,
