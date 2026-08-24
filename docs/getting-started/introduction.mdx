@@ -1,0 +1,74 @@
+---
+title: "soundprobe 是什么"
+sidebarTitle: "介绍"
+description: "教育网优先的跨平台网络路径测量 CLI：多视角、不打分、诚实数据"
+icon: "compass"
+---
+
+soundprobe 是一款开源（MIT）、教育网优先的跨平台网络路径测量工具，用 Go
+编写，支持 macOS、Linux 和 Windows。它在终端里运行，交互界面基于
+Bubble Tea 内联渲染，也可以完全脚本化地输出 JSON。
+
+它和常见"测速软件"的最大区别是：**它不把不同线路压成一个"网络分数"**，
+而是按顺序回答几个清楚的问题——
+
+- 南大校园网或校园 VPN 是否连通、路径表现如何（`nju-campus`）；
+- 当前公网/代理出口的 bulk-transport 表现如何（`mlab`，M-Lab NDT7）；
+- 负载之下网络是否仍有响应（`apple`，macOS 自带 networkQuality）；
+- 附近的运营商侧参考服务器表现如何（`ookla`，可选，仅官方 CLI）；
+- 教育网其他方向的参考站点表现如何（`tongji`、`qlu`，可选）。
+
+每个目标是一次独立的测量，回答一个独立的问题。所有选中的目标按显示顺序
+**串行执行**，避免互相争抢带宽污染数据。
+
+## 为什么需要另一个测速工具
+
+如果你在教育网（CERNET）环境里用过测速工具，大概遇到过这些困惑：
+
+- 校内测速网页显示几百 Mbps，但访问公网很慢——因为**校内路径和出口路径
+  是两条完全不同的路**；
+- 两个测速工具给出的数字差一倍——因为单流和多流方法本来就不可直接
+  横向排名（详见[为什么不同工具测出的数字不一样](/concepts/why-results-differ)）；
+- 工具显示一个"评分"，但你不知道它意味着什么，也无法用它排障。
+
+soundprobe 的回答是：把每个视角的原始测量结果如实呈现，明确标注方法边界，
+让"数字不一样"从困惑变成信息。
+
+## 设计原则
+
+<CardGroup cols={2}>
+  <Card title="多视角，不打分" icon="layer-group">
+    不同目标的结果永远不会被替换、排名或折算成一个综合分数。
+  </Card>
+  <Card title="教育网优先" icon="graduation-cap">
+    NJU 校园网是产品主线；同济、齐鲁工大等教育网站点作为可选参考。
+  </Card>
+  <Card title="诚实的数据" icon="scale-balanced">
+    失败记录零速率和稳定的失败阶段；取消后未开始的目标记 skipped 与
+    null 速率。失败不会被伪装成成功。
+  </Card>
+  <Card title="可脚本化" icon="terminal">
+    全局 `--json` 输出单个 JSON 文档、无 ANSI 转义；历史可导出
+    JSONL/CSV；退出码稳定。
+  </Card>
+  <Card title="隐私 fail-closed" icon="lock">
+    M-Lab 测试要求显式接受其隐私政策；没有同意记录时非交互命令直接
+    失败，不接触 M-Lab。soundprobe 自身没有任何遥测。
+  </Card>
+  <Card title="不越界" icon="hand">
+    无守护进程、无账号、无云同步、无自动调度；不代替用户接受任何
+    第三方条款。
+  </Card>
+</CardGroup>
+
+## 下一步
+
+- [快速开始](/getting-started/quickstart)：从 `brew install` 到第一次测速。
+- [网络测速在测什么](/concepts/what-speed-tests-measure)：理解带宽、延迟、
+  抖动、丢包与负载下响应性。
+- [soundprobe 的定位](/positioning/philosophy)：它做什么、不做什么。
+
+<Note>
+产品名、仓库名、Homebrew Formula 和可执行文件均保持小写 `soundprobe`；
+`SoundProbe` 只用于必要的人类可读标题。
+</Note>

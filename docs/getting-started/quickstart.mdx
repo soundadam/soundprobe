@@ -1,0 +1,93 @@
+---
+title: "快速开始"
+description: "从 Homebrew 安装到第一次完整测速"
+icon: "rocket"
+---
+
+本页假设你使用 macOS 和 Homebrew。Linux/Windows 的安装方式见
+[安装](/getting-started/installation)。
+
+<Steps>
+  <Step title="安装">
+    ```sh
+    brew tap soundadam/tap
+    brew install soundprobe
+    ```
+  </Step>
+  <Step title="检查环境">
+    ```sh
+    soundprobe doctor --json
+    ```
+
+    `doctor` 会报告核心 provider（`campus`、`mlab`）与可选 provider
+    （`apple`、`ookla`）的就绪状态、M-Lab 同意状态和历史目录位置。
+    缺少某个可选 helper 不影响基础测量。字段含义见
+    [doctor 排障](/reference/doctor)。
+  </Step>
+  <Step title="首次设置">
+    在交互终端里直接运行：
+
+    ```sh
+    soundprobe
+    ```
+
+    第一次运行会让你选择界面语言（中文 / English）和日常测速站。
+    macOS 默认预选 `nju-campus`、`mlab`、`apple`；Linux/Windows 默认预选
+    `nju-campus`、`mlab`。以后可随时用 `soundprobe setup` 修改。
+
+    选择器只做轻量 DNS/连接探测，不会提前执行带宽测试。快捷键：
+
+    ```text
+    ↑/↓ 或 j/k   移动
+    Space        选择/取消
+    4            IPv4
+    6            IPv6
+    d            dual（仅有双栈地址的站点展开）
+    a            恢复 NJU + M-Lab + Apple 推荐
+    Enter        按顺序开始
+    q / Esc      取消
+    ```
+  </Step>
+  <Step title="M-Lab 隐私同意（若计划包含 M-Lab）">
+    M-Lab 会公开并无限期保留测试结果和 ISP 提供的公网 IP。第一次运行
+    包含 M-Lab 的计划时，soundprobe 会展示政策并要求你输入 `accept`；
+    也可以提前完成：
+
+    ```sh
+    soundprobe consent accept
+    soundprobe consent status
+    ```
+
+    没有同意记录时，非交互命令在接触 M-Lab 前直接以
+    `consent_required` 失败（fail closed）。不含 M-Lab 的计划不需要
+    这一步。详见 [M-Lab 隐私与同意](/reference/mlab-privacy)。
+  </Step>
+  <Step title="第一次测速">
+    确认选择后，所有目标按显示顺序串行执行，终端里每个目标有独立的
+    进度面板。完成后输出一张汇总表：每行一个目标，包含方法、上下行
+    速率、服务器和状态。
+
+    也可以跳过选择器直接跑：
+
+    ```sh
+    soundprobe run --targets nju-campus,mlab --family ipv4
+    ```
+  </Step>
+  <Step title="查看与导出结果">
+    ```sh
+    soundprobe last --json
+    soundprobe history --limit 20
+    soundprobe export --format jsonl --output /tmp/soundprobe.jsonl
+    ```
+
+    每次结果默认永久保存在用户配置目录（可用 `--no-save` 关闭），
+    路径与字段说明见 [JSON 输出与自动化](/reference/json-and-automation)。
+  </Step>
+</Steps>
+
+## 读懂第一次结果
+
+不同目标的数字**不应互相排名**：NJU Campus 走的是校内路径，M-Lab 走公网
+出口，两者的方法（LibreSpeed 三并发流 vs NDT7 单流）也不同。每个目标
+回答的问题以及失败/skipped 状态的含义，见
+[如何读懂 soundprobe 的结果](/concepts/reading-results)。

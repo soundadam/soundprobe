@@ -1,0 +1,97 @@
+---
+title: "如何读懂 soundprobe 的结果"
+description: "各目标回答什么问题、IPv4/IPv6 的含义，以及失败与 skipped 的语义"
+icon: "book-open"
+---
+
+soundprobe 的一次运行由若干**目标**（target）组成，按显示顺序串行执行
+——串行是有意的，避免多个测量互相争抢带宽污染数据。每个目标产生一条
+独立的测量记录。读结果的第一原则：
+
+> **每个目标回答自己的问题，不同目标之间不比大小。**
+
+## 各目标回答什么问题
+
+| 目标 ID | 默认 | 它回答的问题 | 方法与结果边界 |
+| --- | --- | --- | --- |
+| `nju-campus` | 是 | 南大校内服务、校园网或 NJU VPN 是否连通、表现如何 | LibreSpeed 三并发流；IPv4/IPv6 可分别选择 |
+| `mlab` | 是 | 当前公网/代理出口的 bulk-transport 表现 | M-Lab NDT7 单流；节点由 Locate 动态返回 |
+| `apple` | macOS 默认 | 公网吞吐与**负载下响应性**（RPM） | macOS 自带 `networkQuality`；Linux/Windows 自动跳过 |
+| `ookla` | 否 | 附近 Ookla 测试服务器的运营商侧参考 | 仅官方 Speedtest CLI；服务器动态选择 |
+| `tongji` | 否 | 上海及江浙沪方向的教育网参考 | Tongji LibreSpeed 三并发流，IPv4 |
+| `qlu` | 否 | 山东方向的教育网参考 | QLU LibreSpeed 三并发流，IPv4 |
+| `cernet` | 否 | CERNET 公共站点兼容性 | 当前服务不可达，保留显式诊断 |
+
+几个解读要点：
+
+- **`nju-campus` 快不代表公网快**，反之亦然——它们测的是不同路径。
+  两者结合才能定位瓶颈在校内还是出口。
+- **`mlab` 不承诺返回境外节点**。M-Lab Locate 返回哪个节点，界面和
+  JSON 就如实显示哪个节点；解读速率前先看服务器在哪。
+- **`apple` 的 RPM 是独有信息**：吞吐正常但 RPM 低（如 < 300），说明
+  存在 bufferbloat，负载下交互体验会差。参见
+  [网络测速在测什么](/concepts/what-speed-tests-measure)。
+- **`ookla` 的 `serverSponsor` 表示测速服务器的运营方**，不是你的接入
+  运营商。soundprobe 不做 ASN、地理定位或客户端运营商识别。
+- **NJU Edge（`test.nju.edu.cn`）显示为终端不支持**：其后端有浏览器
+  验证，soundprobe 不绕过验证，也不发布一个只会返回 null 的目标。
+- 教育网站点的"三流"是**三个并发 HTTP 请求**，不是三条物理线路；
+  NDT7 是单流，两类数值不可直接横向排名，见
+  [为什么不同工具测出的数字不一样](/concepts/why-results-differ)。
+
+## IPv4 与 IPv6
+
+对支持双栈的站点（如 NJU Campus），IPv4 和 IPv6 是**两次独立测量**，
+提供商 ID 也不同（`nju-campus-ipv4` / `nju-campus-ipv6`）。两个地址族
+经常走不同路由，结果差异本身就是有用信息。
+
+自动 provider（`mlab`、`apple`、`ookla`）每个计划只执行一次，不按地址
+族扩展成两次；helper 返回实际使用的地址族时记录在 `ipFamily` 字段。
+
+## 状态语义：失败不伪装成成功
+
+每条测量有四种状态，语义严格区分：
+
+| 状态 | 含义 | 速率字段 | failure 对象 |
+| --- | --- | --- | --- |
+| `success` | 测量完成 | 实测值 | 无 |
+| `failed` | **尝试过**但失败 | 零或部分实测值（不为 null） | 有，含稳定的 `stage` 和 `code` |
+| `cancelled` | 执行中被取消 | null | 有，`stage` 为 `cancelled` |
+| `skipped` | 取消后**未开始** | null | 无 |
+
+`failed` 与 `skipped` 的区别是刻意的：零速率 + failure 表示"试了，
+不行，原因在这"；null + skipped 表示"根本没试"。这样历史数据里不会
+出现"看起来测了但其实没测"的记录。失败阶段（`failure.stage`）取值
+固定：`helper`、`dns`、`connect`、`download`、`upload`、`timeout`、
+`cancelled`，可直接用于脚本判断。
+
+整次运行的状态由测量状态推导：全部成功为 `success`；有成有败为
+`partial`；全部失败为 `failed`；操作者取消为 `cancelled`。对应退出码
+`0` / `2` / `2` / `130`；配置错误、helper 缺失、未同意 M-Lab 等在测量
+开始前的失败返回 `1`。
+
+## 可选目标的自动移除
+
+组合运行（如默认的 `nju-campus → mlab → apple`）在执行前会移除不可用
+的**可选** provider（例如 Linux 上没有 Apple helper），并在 stderr 提示
+一行，其余目标照常执行——这不算失败。但**显式**运行 `soundprobe apple`
+或 `soundprobe ookla` 时，helper 不可用会在测速前直接失败，不会静默换
+成别的工具。
+
+## 一个例子
+
+```text
+TARGET              METHOD                   DOWNLOAD     UPLOAD      SERVER                    STATUS
+NJU Campus IPv4     librespeed-three-stream  812.44 Mbps  93.10 Mbps  speed.nju.edu.cn          success
+M-Lab NDT7          ndt7-single-stream       203.52 Mbps  41.87 Mbps  ndt-xxxx.measurementlab   success
+Apple networkQuality apple-networkquality    486.20 Mbps  88.31 Mbps  —                         success
+```
+
+读法：校内路径畅通（812 Mbps，三流）；公网出口单流约 200 Mbps——
+**不要**与 812 比大小，方法和路径都不同；Apple 的多流公网吞吐约
+486 Mbps，同时它还会报告 RPM（此表未展示，JSON 中为
+`responsivenessRpm`）。如果此时 RPM 只有两三百，说明负载下延迟膨胀
+明显，即使吞吐漂亮，会议体验也可能不佳。
+
+完整的 JSON 字段说明见
+[JSON 输出与自动化](/reference/json-and-automation)。

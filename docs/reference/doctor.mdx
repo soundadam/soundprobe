@@ -1,0 +1,83 @@
+---
+title: "doctor 排障"
+description: "读懂 soundprobe doctor 的输出，处理常见环境问题"
+icon: "stethoscope"
+---
+
+`soundprobe doctor` 是排障入口：它检查核心与可选 provider 的就绪状态、
+M-Lab 同意和本地存储位置，**不执行任何带宽测试**。
+
+```sh
+soundprobe doctor
+soundprobe doctor --json
+```
+
+## 输出字段
+
+JSON 模式的字段：
+
+| 字段 | 说明 |
+| --- | --- |
+| `version` | soundprobe 版本 |
+| `ready` | 核心 provider（`campus`、`mlab`）是否全部就绪；为 `false` 时退出码为 `1` |
+| `combinedReady` | `ready` 且 M-Lab 同意已接受——默认组合计划可直接非交互运行 |
+| `providers` | 核心 provider 状态：`campus`、`mlab`，就绪为 `"ready"`，否则为具体错误信息 |
+| `optionalProviders` | 可选 provider 状态：`apple`、`ookla`；它们缺失**不影响** `ready` |
+| `consentAccepted` | 是否存在当前政策版本的 M-Lab 同意记录 |
+| `historyPath` | 历史目录路径 |
+| `preferencesPath` / `setupComplete` | 偏好文件路径与首次设置是否完成 |
+| `language` / `dailyStations` | 已完成设置时的语言与日常测速站 |
+
+## 常见问题与处理
+
+<AccordionGroup>
+  <Accordion title="campus / mlab 报 helper 缺失">
+    基础测量依赖 soundprobe 发布的 `librespeed-cli` 和 `ndt7-client`
+    helper。Homebrew 安装会放在 `../libexec/soundprobe/`；自行构建时
+    需要把 helper 放进仓库 `.tools/bin` 或按文档配置 PATH。soundprobe
+    **不会**自动下载缺失的 helper。见[安装](/getting-started/installation)
+    的 helper 机制一节。
+  </Accordion>
+  <Accordion title="consentAccepted 为 false，非交互运行失败">
+    这是 fail-closed 的预期行为。在交互终端执行
+    `soundprobe consent accept` 后重试。不含 M-Lab 的计划不受影响。
+    见 [M-Lab 隐私与同意](/reference/mlab-privacy)。
+  </Accordion>
+  <Accordion title="ookla 报错：找到的是 Python speedtest-cli">
+    PATH 上名为 `speedtest` 的程序不是官方 Ookla CLI。soundprobe 会
+    检查所有 PATH 候选并只接受官方标识；可用
+    `SOUNDPROBE_OOKLA_PATH=/path/to/speedtest` 显式指定，或按
+    [安装页](/getting-started/installation)的冲突处理一节重装官方
+    CLI。排查：
+
+    ```sh
+    command -v speedtest
+    speedtest --version
+    ```
+  </Accordion>
+  <Accordion title="apple 在 Linux/Windows 上不可用">
+    预期行为：`networkQuality` 是 macOS 系统组件。组合运行会自动移除
+    该可选目标并继续；只有显式 `soundprobe apple` 才会失败。
+  </Accordion>
+  <Accordion title="edge 目标报终端不支持">
+    NJU Edge（`test.nju.edu.cn`）的测速后端有浏览器验证，标准终端
+    客户端拿不到测量结果。soundprobe 如实报告而不绕过验证；待官方
+    提供终端兼容端点后才会启用。
+  </Accordion>
+  <Accordion title="cernet 目标不可达">
+    CERNET 公共站点（`speedtest.sec.edu.cn`）当前服务不可达。该目标
+    保留显式诊断用途，不进入日常设置；`tongji`、`qlu` 是可用的教育网
+    参考方向。
+  </Accordion>
+  <Accordion title="测量中途失败，如何定位阶段">
+    每条失败测量带有稳定的 `failure.stage`：`helper`（helper 启动/
+    输出问题）、`dns`、`connect`、`download`、`upload`、`timeout`。
+    结合 `soundprobe stations` 的轻量可达性探测可以快速区分"站点
+    不可达"与"helper 环境问题"。
+  </Accordion>
+</AccordionGroup>
+
+## 退出码
+
+`doctor` 在核心 provider 全部就绪时返回 `0`，否则返回 `1`（可选
+provider 缺失不影响退出码）。

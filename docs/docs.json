@@ -1,0 +1,61 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "soundprobe",
+  "description": "教育网优先的跨平台网络路径测量 CLI",
+  "colors": {
+    "primary": "#0F766E",
+    "light": "#2DD4BF",
+    "dark": "#134E4A"
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "快速开始",
+        "pages": [
+          "getting-started/introduction",
+          "getting-started/quickstart",
+          "getting-started/installation"
+        ]
+      },
+      {
+        "group": "测速科普",
+        "pages": [
+          "concepts/what-speed-tests-measure",
+          "concepts/why-results-differ",
+          "concepts/reading-results"
+        ]
+      },
+      {
+        "group": "定位与对比",
+        "pages": [
+          "positioning/philosophy",
+          "positioning/comparison"
+        ]
+      },
+      {
+        "group": "参考",
+        "pages": [
+          "reference/cli",
+          "reference/json-and-automation",
+          "reference/mlab-privacy",
+          "reference/doctor",
+          "reference/faq"
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/soundadam/soundprobe"
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/soundadam/soundprobe"
+    }
+  }
+}

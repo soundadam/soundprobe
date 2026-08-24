@@ -1,0 +1,109 @@
+---
+title: "CLI 命令参考"
+sidebarTitle: "CLI 命令"
+description: "soundprobe 全部命令、参数与退出码"
+icon: "terminal"
+---
+
+## 命令总览
+
+```text
+soundprobe
+soundprobe run [--targets LIST] [--family ipv4|ipv6|dual] [--label TEXT] [--note TEXT] [--no-save]
+soundprobe campus [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
+soundprobe edge [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
+soundprobe domestic [--targets LIST] [--family ipv4|dual] [--label TEXT] [--note TEXT] [--no-save]
+soundprobe mlab [--label TEXT] [--note TEXT] [--no-save]
+soundprobe apple [--label TEXT] [--note TEXT] [--no-save]
+soundprobe ookla [--label TEXT] [--note TEXT] [--no-save]
+soundprobe stations [--json]
+soundprobe history [--limit N]
+soundprobe last [--json]
+soundprobe show RUN_ID [--json]
+soundprobe export --format jsonl|csv --output PATH
+soundprobe consent status|accept|revoke
+soundprobe setup
+soundprobe doctor [--json]
+soundprobe version
+```
+
+全局 `--json` 可加在任意位置：输出恰好一个 JSON 文档，不含 ANSI 转义，
+且永远不会打开交互选择器。
+
+## 测量命令
+
+| 命令 | 默认目标 | 说明 |
+| --- | --- | --- |
+| `soundprobe` | 日常测速站设置 | TTY 中打开交互选择器（首次运行先进入 setup）；脚本/重定向/`--json` 下等价于 `run` 默认计划 |
+| `run` | `nju-campus, mlab, apple`（非 macOS 自动移除 `apple`） | 通用组合测量，`--targets` 自定义目标列表 |
+| `campus` | `nju-campus` | NJU 校园网；默认 IPv4，`--ipv6` 切换（无 IPv4 回退） |
+| `edge` | `nju-edge` | 如实报告"终端不支持"（后端有浏览器验证），在测量前失败 |
+| `domestic` | `tongji, qlu` | 教育网参考站，顺序执行；仅 IPv4（`--family ipv6` 被拒绝）；`cernet` 仅可显式指定 |
+| `mlab` | `mlab` | M-Lab NDT7 单流；需要[隐私同意](/reference/mlab-privacy) |
+| `apple` | `apple` | macOS `networkQuality`；其他平台在测量前失败 |
+| `ookla` | `ookla` | 仅官方 Speedtest CLI；交互模式下缺 helper 时提供 Enter 确认的官方安装序列 |
+
+### 通用参数
+
+| 参数 | 适用 | 说明 |
+| --- | --- | --- |
+| `--targets LIST` | `run`、`domestic` | 逗号分隔的站点 ID；非法 ID 或不支持的组合在接触任何 provider 前失败 |
+| `--family ipv4\|ipv6\|dual` | `run`、`domestic` | 地址族；`dual` 把双栈站点展开为有序的两个目标；默认 `ipv4` |
+| `--ipv4` / `--ipv6` | `campus`、`edge` | 互斥；等价于对应 family |
+| `--label TEXT` / `--note TEXT` | 测量命令 | 写入结果的标签与备注 |
+| `--no-save` | 测量命令 | 不写入历史 |
+
+站点 ID：`nju-campus`、`nju-edge`、`mlab`、`apple`、`ookla`、`tongji`、
+`qlu`、`cernet`。所有选中目标按顺序**串行**执行；重复目标会被拒绝或
+去重，不会意外执行两次。
+
+示例：
+
+```sh
+soundprobe run --targets nju-campus,mlab,apple --family ipv4 --no-save --json
+soundprobe campus --ipv6 --label "宿舍有线"
+soundprobe domestic --targets tongji --family ipv4
+soundprobe ookla --no-save --json
+```
+
+## 查询与管理命令
+
+| 命令 | 说明 |
+| --- | --- |
+| `stations [--json]` | 对全部站点做轻量可达性探测（DNS/连接，不测带宽），输出 STATION/FAMILY/STATUS/LATENCY/DETAIL 表 |
+| `history [--limit N]` | 列出已保存的运行；默认 20 条，`--limit 0` 列出全部 |
+| `last [--json]` | 最近一次运行的摘要 |
+| `show RUN_ID [--json]` | 指定运行的摘要 |
+| `export --format jsonl\|csv --output PATH` | 导出全部历史；见 [JSON 输出与自动化](/reference/json-and-automation) |
+| `consent status\|accept\|revoke` | M-Lab 隐私同意管理；`accept` 仅交互可用 |
+| `setup` | 重新选择界面语言与日常测速站；需要交互终端 |
+| `doctor [--json]` | 环境诊断；见 [doctor 排障](/reference/doctor) |
+| `version` | 输出版本 |
+
+## 交互选择器
+
+在 TTY 中裸运行 `soundprobe` 会打开 Bubble Tea 内联选择器（不使用备用
+屏幕），展示各站点的描述、地址族支持、可达性和探测延迟：
+
+```text
+↑/↓ 或 j/k   移动
+Space        选择/取消
+4            IPv4
+6            IPv6
+d            dual（仅双栈站点展开）
+a            恢复 NJU + M-Lab + Apple 推荐
+Enter        按顺序开始
+q / Esc      取消
+```
+
+推荐只设置默认值，不授权测量过程中的静默替换。Ookla 永远不会被自动
+推荐，只有在 `soundprobe setup` 中被主动勾选后才进入日常集合。
+
+## 退出码
+
+| 退出码 | 含义 |
+| --- | --- |
+| `0` | 全部请求的测量成功 |
+| `1` | 配置无效、helper 缺失、缺少同意或内部错误（测量开始前的失败） |
+| `2` | 有目标失败或部分成功（`partial` / `failed`） |
+| `130` | 被操作者取消 |

@@ -1,0 +1,114 @@
+---
+title: "JSON 输出与自动化"
+sidebarTitle: "JSON 与自动化"
+description: "结果 schema、历史文件、导出格式与脚本用法"
+icon: "code"
+---
+
+## 全局 `--json`
+
+任意命令加 `--json` 后输出**恰好一个 JSON 文档**，无 ANSI 转义，且不会
+打开交互界面。命令级错误统一为：
+
+```json
+{"error": {"code": "consent_required", "message": "M-Lab consent is required; run `soundprobe consent accept` interactively"}}
+```
+
+常见错误码：`invalid_arguments`、`unknown_command`、`consent_required`、
+`consent_requires_interaction`、`measurement_unavailable`、
+`measurement_error`、`storage_error`、`no_history`、
+`setup_requires_interaction`。配合[稳定退出码](/reference/cli)
+即可编写可靠的脚本。
+
+## 运行摘要（RunSummary）
+
+每次测量输出/保存一个运行摘要，schema 版本当前为 `1`：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `schemaVersion` | int | 固定 `1`；0.1 版写入的旧历史仍可读取 |
+| `runId` | string | 运行 ID，也是历史文件名 |
+| `toolVersion` | string | soundprobe 版本 |
+| `startedAt` / `endedAt` | RFC 3339 时间 | 起止时间 |
+| `command` | string | `run`/`campus`/`edge`/`domestic`/`mlab`/`apple`/`ookla` |
+| `targets` | string[] | **按执行顺序**排列的 provider ID |
+| `status` | string | `success` / `partial` / `failed` / `cancelled` |
+| `label` / `note` | string \| null | `--label` / `--note` 的值 |
+| `network` | object | 本机网络快照（接口、SSID、网关、DNS、本地地址等） |
+| `measurements` | object[] | 与 `targets` 数量和顺序一致的测量数组 |
+
+## 测量对象（Measurement）
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `provider` | string | 稳定 ID：`nju-campus-ipv4/-ipv6`、`nju-edge-ipv4/-ipv6`、`mlab`、`apple-networkquality`、`ookla-speedtest`、`cernet-ipv4`、`qlu-ipv4`、`tongji-ipv4`（旧 `campus` 仅用于读取 schema-v1 历史） |
+| `method` | string | `librespeed-three-stream` / `ndt7-single-stream` / `apple-networkquality` / `ookla-speedtest` |
+| `status` | string | `success` / `failed` / `skipped` / `cancelled`，语义见[结果解读](/concepts/reading-results) |
+| `ipFamily` | string \| null | helper 返回的实际地址族（`ipv4`/`ipv6`） |
+| `serverName` / `serverFqdn` / `serverAddress` | string \| null | 实际使用的服务器 |
+| `serverId` | int，可缺省 | Ookla 服务器 ID |
+| `serverSponsor` | string，可缺省 | 测速服务器运营方（**不是**用户的接入运营商） |
+| `clientPublicIp` | string \| null | helper 报告的公网 IP |
+| `pingMs` / `jitterMs` | number \| null | 延迟与抖动 |
+| `responsivenessRpm` / `downloadResponsivenessRpm` / `uploadResponsivenessRpm` | number，可缺省 | 负载下响应性（RPM），目前来自 Apple provider |
+| `downloadMbps` / `uploadMbps` | number \| null | 上下行速率；失败为 0 或部分实测值，skipped 为 null |
+| `downloadBytes` / `uploadBytes` | int \| null | 传输字节数 |
+| `durationMs` | int \| null | 测量时长 |
+| `concurrency` | int \| null | 并发流数（LibreSpeed 目标为 3） |
+| `helperVersion` | string \| null | 实际执行的 helper 版本 |
+| `failure` | object，可缺省 | `{stage, code, message}`；`stage` ∈ `helper`/`dns`/`connect`/`download`/`upload`/`timeout`/`cancelled` |
+
+可选字段（`serverId`、`serverSponsor`、三个 RPM）在 helper 未返回时保持
+缺省/null，不会被编造。
+
+## 历史文件
+
+每次运行（除 `--no-save`）永久保存为一个 JSON 文件：
+
+```text
+macOS:   ~/Library/Application Support/soundprobe/history/v1/<run-id>.json
+Linux:   ${XDG_CONFIG_HOME:-~/.config}/soundprobe/history/v1/<run-id>.json
+Windows: %AppData%\soundprobe\history\v1\<run-id>.json
+```
+
+- 目录权限 `0700`、文件权限 `0600`；
+- 写入使用同目录临时文件 + fsync + 原子 rename；
+- 不保存逐秒采样，只存最终摘要；
+- 历史**永不自动清理**；
+- 旧的 schema-v1 历史保持可读；若存在早期 `njuprobe` 目录的历史或
+  同意记录，迁移完成前会继续读取，新写入使用 `soundprobe` 目录。
+
+## 导出
+
+```sh
+soundprobe export --format jsonl --output /tmp/soundprobe.jsonl
+soundprobe export --format csv   --output /tmp/soundprobe.csv
+```
+
+- **JSONL**：每行一个完整运行摘要，适合喂给日志/分析系统；
+- **CSV**：每行一个 measurement，重复运行级元数据，包含 server ID、
+  sponsor 和三类 RPM 字段——规范化形式保留任意多站点、双栈计划。
+
+## 脚本示例
+
+定时记录并在失败时告警（`jq` 处理单文档输出）：
+
+```sh
+result=$(soundprobe run --targets nju-campus,mlab --family ipv4 --json)
+status=$(echo "$result" | jq -r '.status // "error"')
+if [ "$status" != "success" ]; then
+  echo "$result" | jq '{status, failures: [.measurements[]? | select(.failure) | {provider, stage: .failure.stage, code: .failure.code}]}'
+fi
+```
+
+提取最近一次各目标的下行速率：
+
+```sh
+soundprobe last --json | jq -r '.measurements[] | [.provider, .method, .downloadMbps] | @tsv'
+```
+
+<Note>
+非交互执行包含 M-Lab 的计划前，请先在交互终端完成
+`soundprobe consent accept`，否则命令会以 `consent_required` 失败
+（fail closed）。见 [M-Lab 隐私与同意](/reference/mlab-privacy)。
+</Note>
