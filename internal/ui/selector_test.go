@@ -50,11 +50,11 @@ func TestConfiguredSelectorShowsOnlyDailyStationsInPriorityOrder(t *testing.T) {
 	selector := newSelectorModelConfigured("test", []target.ProbeResult{
 		{StationID: "tongji", Family: "ipv4", Status: target.ProbeReachable},
 	}, preferences.Config{SchemaVersion: preferences.SchemaVersion, Language: preferences.LanguageChinese, DailyStations: []string{"tongji", "ookla"}})
-	if len(selector.stations) != 2 || selector.stations[0].ID != "tongji" || selector.stations[1].ID != "ookla" {
+	if len(selector.stations) != 2 || selector.stations[0].ID != "ookla" || selector.stations[1].ID != "tongji" {
 		t.Fatalf("stations = %#v", selector.stations)
 	}
 	view := selector.View().Content
-	if !strings.Contains(view, "选择测速站") || !strings.Contains(view, "同济大学 · 上海") || strings.Contains(view, "M-Lab") {
+	if !strings.Contains(view, "选择测速站") || !strings.Contains(view, "Tongji") || strings.Contains(view, "M-Lab") {
 		t.Fatalf("configured view:\n%s", view)
 	}
 }

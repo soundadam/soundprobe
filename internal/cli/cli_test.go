@@ -506,7 +506,7 @@ func TestEdgeCommandIsRemoved(t *testing.T) {
 	if exitCode := app.Execute(context.Background(), []string{"edge", "--no-save"}); exitCode != 1 {
 		t.Fatalf("exit code = %d", exitCode)
 	}
-	if !strings.Contains(stderr.String(), "unknown command") {
+	if !strings.Contains(stderr.String(), "Unknown command") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 }

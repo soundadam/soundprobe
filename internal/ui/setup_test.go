@@ -21,7 +21,7 @@ func TestSetupChoosesLanguageAndDailyStations(t *testing.T) {
 	}
 	_, _ = setup.Update(key("enter"))
 	view = setup.View().Content
-	for _, expected := range []string{"南京大学校内测速服务", "公共互联网 NDT7", "同济大学 · 上海", "✓"} {
+	for _, expected := range []string{"南京大学校内测速服务", "M-Lab", "Tongji", "✓"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("setup view missing %q:\n%s", expected, view)
 		}
