@@ -138,10 +138,12 @@ Check:
 - the selector clears before progress begins;
 - NJU Campus plus M-Lab and Apple are recommended; Ookla is never auto-selected;
 - NJU Edge is omitted from daily CLI choices and its error points to the web test;
-- `4`, `6`, and `d` switch family modes;
+- `4`, `6`, and `d` switch family modes, as do `←`/`→` and `h`/`l`;
+- Home/End jump to the first and last station;
 - IPv4-only domestic stations are disabled in IPv6 mode;
 - Space toggles stations and Enter starts the exact visible order;
 - q, Esc, and Ctrl-C cancel without creating a history entry.
+- the selector, setup, and progress views share the Charm title/accent/help language.
 
 ## 6. Real NJU acceptance
 

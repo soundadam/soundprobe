@@ -824,7 +824,7 @@ func (app *App) renderSummary(summary model.RunSummary) {
 func (app *App) renderHistory(summaries []model.RunSummary) {
 	out, styles := app.humanOutput()
 	if len(summaries) == 0 {
-		fmt.Fprintln(out, "No saved runs.")
+		fmt.Fprintln(out, styles.Dim("No saved runs."))
 		return
 	}
 	rows := [][]string{{

@@ -3,9 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -25,6 +23,7 @@ type setupModel struct {
 	done      bool
 	cancelled bool
 	errorText string
+	chrome    chrome
 }
 
 func Configure(ctx context.Context, input io.Reader, output io.Writer, version string, current preferences.Config) (preferences.Config, error) {
@@ -61,16 +60,32 @@ func newSetupModel(version string, current preferences.Config) *setupModel {
 	for _, id := range current.DailyStations {
 		selected[id] = true
 	}
-	return &setupModel{version: version, language: current.Language, stations: stations, selected: selected}
+	return &setupModel{
+		version:  version,
+		language: current.Language,
+		stations: stations,
+		selected: selected,
+		chrome:   newChrome(),
+	}
 }
 
-func (setup *setupModel) Init() tea.Cmd { return nil }
+func (setup *setupModel) Init() tea.Cmd {
+	return tea.RequestBackgroundColor
+}
 
 func (setup *setupModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
-	key, ok := message.(tea.KeyPressMsg)
-	if !ok {
+	switch message := message.(type) {
+	case tea.WindowSizeMsg, tea.BackgroundColorMsg:
+		setup.chrome = setup.chrome.update(message)
+		return setup, nil
+	case tea.KeyPressMsg:
+		return setup.handleKey(message)
+	default:
 		return setup, nil
 	}
+}
+
+func (setup *setupModel) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	setup.errorText = ""
 	if key.String() == "ctrl+c" || key.String() == "q" || key.String() == "esc" {
 		setup.cancelled = true
@@ -98,6 +113,12 @@ func (setup *setupModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if setup.cursor+1 < len(setup.stations) {
 			setup.cursor++
 		}
+	case "home":
+		setup.cursor = 0
+	case "end":
+		if len(setup.stations) > 0 {
+			setup.cursor = len(setup.stations) - 1
+		}
 	case "space":
 		id := setup.stations[setup.cursor].ID
 		setup.selected[id] = !setup.selected[id]
@@ -119,51 +140,50 @@ func (setup *setupModel) View() tea.View {
 		return tea.NewView("")
 	}
 	if setup.screen == 0 {
-		zh, en := "  中文  ", "  English  "
-		if setup.language == preferences.LanguageChinese {
-			zh = "› 中文"
-		} else {
-			en = "› English"
-		}
-		return tea.NewView(strings.Join([]string{
-			fmt.Sprintf("soundprobe %s · welcome / 欢迎", setup.version),
-			"",
-			"Choose interface language / 选择界面语言",
-			"",
-			zh + "     " + en,
-			"",
-			"←/→ switch   Enter continue   q cancel",
-		}, "\n"))
+		chinese := setup.language == preferences.LanguageChinese
+		return tea.NewView(setup.chrome.render(screen{
+			title:       "soundprobe",
+			version:     setup.version,
+			description: "Choose interface language / 选择界面语言",
+			body:        []string{setup.chrome.indent(setup.chrome.languageChoice(chinese, !chinese))},
+			help: []string{
+				setup.chrome.helpHorizontal(true, true),
+				setup.chrome.helpKeys("enter", "q"),
+			},
+		}))
 	}
-	lines := []string{
-		fmt.Sprintf("soundprobe %s · %s", setup.version, setup.text("选择日常测速站", "choose daily stations")),
-		setup.text("以后直接运行 soundprobe 时只显示这些站点，可用 soundprobe setup 修改。", "Only these stations appear in daily use. Run soundprobe setup to change them."),
-		"",
+	body := make([]string, 0, len(setup.stations)*2)
+	if len(setup.stations) == 0 {
+		body = append(body, setup.chrome.indentFaint(setup.text("没有可加入日常测速的站点", "no daily stations available")))
 	}
 	for index, station := range setup.stations {
-		cursor := "  "
-		if index == setup.cursor {
-			cursor = "› "
-		}
-		check := "[ ]"
-		if setup.selected[station.ID] {
-			check = "[x]"
-		}
+		active := index == setup.cursor
+		label := setup.chrome.cursor(active) + setup.chrome.check(setup.selected[station.ID], false) +
+			setup.chrome.optionLabel(station.Label, active, false)
 		description, useCase := station.Description, station.UseCase
 		if setup.language == preferences.LanguageChinese {
 			description, useCase = station.DescriptionZH, station.UseCaseZH
 		}
-		lines = append(lines, fmt.Sprintf("%s%s %-12s %s", cursor, check, station.Label, description), "      "+useCase)
+		body = append(body,
+			setup.chrome.indent(label+"  "+setup.chrome.palette.Faint(truncateRunes(description, setup.chrome.descriptionLimit()))),
+			setup.chrome.indentFaint(useCase),
+		)
 	}
-	lines = append(lines, "",
-		setup.text("网页测速（不加入日常 CLI）：南大 http://test.nju.edu.cn · 中科大 https://test.ustc.edu.cn", "Web tests (not daily CLI): NJU http://test.nju.edu.cn · USTC https://test.ustc.edu.cn"),
-		"",
-		setup.text("↑/↓ 移动   Space 选择   Enter 保存   b 返回   q 取消", "↑/↓ move   Space toggle   Enter save   b back   q cancel"),
-	)
-	if setup.errorText != "" {
-		lines = append(lines, setup.errorText)
-	}
-	return tea.NewView(strings.Join(lines, "\n"))
+	upActive := setup.cursor > 0
+	downActive := setup.cursor+1 < len(setup.stations)
+	return tea.NewView(setup.chrome.render(screen{
+		title:       "soundprobe",
+		version:     setup.version,
+		description: setup.text("选择日常测速站", "choose daily stations"),
+		hint:        setup.text("以后直接运行 soundprobe 时只显示这些站点。", "Only these stations appear in daily use."),
+		body:        body,
+		help: []string{
+			setup.chrome.helpArrows(upActive, downActive),
+			setup.chrome.helpKeys("space", "enter", "b", "q"),
+		},
+		err:      setup.errorText,
+		footnote: setup.text("网页测速（不加入日常 CLI）：南大 http://test.nju.edu.cn · 中科大 https://test.ustc.edu.cn", "Web tests (not daily CLI): NJU http://test.nju.edu.cn · USTC https://test.ustc.edu.cn"),
+	}))
 }
 
 func (setup *setupModel) selectedIDs() []string {

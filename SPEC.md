@@ -206,15 +206,21 @@ bandwidth test.
 Controls:
 
 ```text
-↑/↓ or j/k   move
-Space        toggle station
-4            IPv4
-6            IPv6
-d            dual stack
-a            restore recommendation
-Enter        execute
-q / Esc      cancel
+↑/↓ or j/k     move
+←/→ or h/l     address family
+Home/End       first/last station
+Space          toggle station
+4              IPv4
+6              IPv6
+d              dual stack
+a              restore recommendation
+Enter          execute
+q / Esc        cancel
 ```
+
+The selector uses the Charm/teaway TUI language: an indigo title, a fuchsia
+current family, sparse key hints, and short error sentences. It stays in inline
+mode.
 
 The selector shows station description, family support, reachability, and probe
 latency. IPv4-only stations are disabled in IPv6 mode.
@@ -288,12 +294,15 @@ Use Bubble Tea v2 in inline mode, never alternate-screen mode. The selector must
 clear before measurement progress begins. During execution redraw one fixed
 block at no more than four frames per second.
 
-Every target receives the same four-row panel:
+Every target receives the same four-row panel, without stacked field labels:
 
 1. explicit station/family label and phase;
 2. animated activity bar;
 3. download/upload rates;
 4. selected server or bounded failure detail.
+
+Network and plan order are short situational lines above the panels. Help is
+keys only. Colors follow the Charm palette and degrade with the terminal.
 
 Targets have independent waiting, active, complete, failed, cancelled, and
 skipped states. M-Lab may add transient live rates; LibreSpeed targets do not.

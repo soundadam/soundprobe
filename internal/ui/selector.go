@@ -18,6 +18,8 @@ import (
 
 var ErrSelectionCancelled = errors.New("measurement selection cancelled")
 
+var familyOrder = []target.Family{target.FamilyIPv4, target.FamilyIPv6, target.FamilyDual}
+
 type selectorModel struct {
 	version   string
 	stations  []target.Station
@@ -30,6 +32,7 @@ type selectorModel struct {
 	cancelled bool
 	errorText string
 	language  preferences.Language
+	chrome    chrome
 }
 
 func SelectPlan(ctx context.Context, input io.Reader, output io.Writer, version string) (target.Plan, error) {
@@ -105,20 +108,29 @@ func newSelectorModelConfigured(version string, probeResults []target.ProbeResul
 		family:   target.FamilyIPv4,
 		selected: map[string]bool{},
 		language: language,
+		chrome:   newChrome(),
 	}
 	model.applyRecommendation()
 	return model
 }
 
 func (selector *selectorModel) Init() tea.Cmd {
-	return nil
+	return tea.RequestBackgroundColor
 }
 
 func (selector *selectorModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
-	key, ok := message.(tea.KeyPressMsg)
-	if !ok {
+	switch message := message.(type) {
+	case tea.WindowSizeMsg, tea.BackgroundColorMsg:
+		selector.chrome = selector.chrome.update(message)
+		return selector, nil
+	case tea.KeyPressMsg:
+		return selector.handleKey(message)
+	default:
 		return selector, nil
 	}
+}
+
+func (selector *selectorModel) handleKey(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	selector.errorText = ""
 	switch key.String() {
 	case "up", "k":
@@ -129,7 +141,21 @@ func (selector *selectorModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if selector.cursor+1 < len(selector.stations) {
 			selector.cursor++
 		}
+	case "home":
+		selector.cursor = 0
+	case "end":
+		if len(selector.stations) > 0 {
+			selector.cursor = len(selector.stations) - 1
+		}
+	case "left", "h":
+		selector.setFamily(cycleFamily(selector.family, -1))
+	case "right", "l":
+		selector.setFamily(cycleFamily(selector.family, 1))
 	case "space":
+		if len(selector.stations) == 0 {
+			selector.errorText = selector.text("没有可选择的测速站", "no stations to select")
+			return selector, nil
+		}
 		station := selector.stations[selector.cursor]
 		if selector.stationSupported(station, selector.family) {
 			selector.selected[station.ID] = !selector.selected[station.ID]
@@ -169,42 +195,39 @@ func (selector *selectorModel) View() tea.View {
 	if selector.done || selector.cancelled {
 		return tea.NewView("")
 	}
-	lines := []string{
-		fmt.Sprintf("soundprobe %s · %s", selector.version, selector.text("选择测速站", "select measurement targets")),
-		fmt.Sprintf("%s  %s   [4] IPv4  [6] IPv6  [d] dual", selector.text("地址族", "Address family"), selector.family),
-		"",
+	body := make([]string, 0, len(selector.stations)*2)
+	if len(selector.stations) == 0 {
+		body = append(body, selector.chrome.indentFaint(selector.text("没有日常测速站", "no daily stations")))
 	}
 	for index, station := range selector.stations {
-		cursor := "  "
-		if index == selector.cursor {
-			cursor = "› "
-		}
-		check := "[ ]"
-		if selector.selected[station.ID] {
-			check = "[x]"
-		}
-		if !selector.stationSupported(station, selector.family) {
-			check = "[-]"
-		}
-		status := selector.stationStatus(station)
+		disabled := !selector.stationSupported(station, selector.family)
+		active := index == selector.cursor
+		label := selector.chrome.cursor(active) + selector.chrome.check(selector.selected[station.ID], disabled) +
+			selector.chrome.optionLabel(station.Label, active, disabled)
 		description := station.Description
 		if selector.language == preferences.LanguageChinese {
 			description = station.DescriptionZH
 		}
-		lines = append(lines,
-			fmt.Sprintf("%s%s %-12s %s", cursor, check, station.Label, truncateRunes(description, 44)),
-			fmt.Sprintf("      %s", truncateRunes(status, 68)),
+		body = append(body,
+			selector.chrome.indent(label+"  "+selector.chrome.palette.Faint(truncateRunes(description, selector.chrome.descriptionLimit()))),
+			selector.chrome.indentFaint(selector.stationStatus(station)),
 		)
 	}
-	lines = append(lines,
-		"",
-		selector.text("↑/↓ 移动   Space 选择   a 推荐   Enter 开始   q 取消", "↑/↓ move   Space toggle   a recommended   Enter start   q cancel"),
-		selector.text("修改日常站点：soundprobe setup", "Change daily stations: soundprobe setup"),
-	)
-	if selector.errorText != "" {
-		lines = append(lines, "Error: "+selector.errorText)
-	}
-	return tea.NewView(strings.Join(lines, "\n"))
+	upActive := selector.cursor > 0
+	downActive := selector.cursor+1 < len(selector.stations)
+	return tea.NewView(selector.chrome.render(screen{
+		title:       "soundprobe",
+		version:     selector.version,
+		description: selector.text("选择测速站", "select measurement targets"),
+		value:       string(selector.family),
+		body:        body,
+		help: []string{
+			selector.chrome.helpArrows(upActive, downActive) + helpGap + selector.chrome.helpHorizontal(true, true),
+			selector.chrome.helpKeys("space", "a", "enter", "q"),
+		},
+		err:      selector.errorText,
+		footnote: selector.text("修改日常站点：soundprobe setup", "Change daily stations: soundprobe setup"),
+	}))
 }
 
 func (selector *selectorModel) selectedIDs() []string {
@@ -339,4 +362,16 @@ func (selector *selectorModel) text(chinese, english string) string {
 
 func probeKey(stationID, family string) string {
 	return stationID + "|" + family
+}
+
+func cycleFamily(current target.Family, delta int) target.Family {
+	index := 0
+	for i, family := range familyOrder {
+		if family == current {
+			index = i
+			break
+		}
+	}
+	n := len(familyOrder)
+	return familyOrder[(index+delta%n+n)%n]
 }

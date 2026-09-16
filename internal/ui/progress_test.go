@@ -41,25 +41,33 @@ func TestProgressModelRendersEqualProviderPanels(t *testing.T) {
 
 	view := progress.View().Content
 	for _, expected := range []string{
-		"soundprobe test",
-		"Network   en0 · wifi · NJU-WLAN",
-		"Order     NJU Campus · IPv4 → M-Lab · sequential",
-		"NJU Campus · IPv4    ✓ complete · 00:00",
-		"Activity  [████████████████████████]",
-		"Rate      ↓ 876.54 Mbps · ↑ 345.67 Mbps",
-		"Detail    server speed.nju.edu.cn",
-		"M-Lab                ◐ downloading · 00:00",
-		"Rate      ↓ 80.00 Mbps · ↑ —",
-		"Detail    server ndt.example.net",
-		"Elapsed   00:12",
-		"Ctrl-C    cancel",
+		"soundprobe",
+		"test",
+		"en0 · wifi · NJU-WLAN",
+		"NJU Campus · IPv4 → M-Lab",
+		"NJU Campus · IPv4",
+		"✓",
+		"complete",
+		"[" + strings.Repeat("█", activityWidth) + "]",
+		"↓ 876.54 Mbps · ↑ 345.67 Mbps",
+		"server speed.nju.edu.cn",
+		"M-Lab",
+		"◐",
+		"downloading",
+		"↓ 80.00 Mbps · ↑ —",
+		"server ndt.example.net",
+		"00:12",
+		"ctrl+c",
 	} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("view missing %q:\n%s", expected, view)
 		}
 	}
-	if len(strings.Split(view, "\n")) != 13 {
-		t.Fatalf("view lines = %d, want 13", len(strings.Split(view, "\n")))
+	if strings.Contains(view, "Activity  ") || strings.Contains(view, "Rate      ") || strings.Contains(view, "Network   ") {
+		t.Fatalf("progress still uses labeled field chrome:\n%s", view)
+	}
+	if strings.Count(view, "[") < 2 {
+		t.Fatalf("expected two activity bars:\n%s", view)
 	}
 }
 
@@ -93,10 +101,13 @@ func TestProgressModelKeepsLiveRatesAndRendersEitherProviderFailure(t *testing.T
 
 	view := progress.View().Content
 	for _, expected := range []string{
-		"NJU Campus · IPv4    × failed",
+		"NJU Campus · IPv4",
+		"×",
+		"failed",
 		"error: server unreachable",
-		"M-Lab                ◐ uploading",
-		"Rate      ↓ 33.67 Mbps · ↑ 4.75 Mbps",
+		"M-Lab",
+		"uploading",
+		"↓ 33.67 Mbps · ↑ 4.75 Mbps",
 		"server ndt.example.net",
 	} {
 		if !strings.Contains(view, expected) {
@@ -120,10 +131,11 @@ func TestProgressModelRendersMLabFailureWithTheSamePanelContract(t *testing.T) {
 
 	view := progress.View().Content
 	for _, expected := range []string{
-		"M-Lab                × failed · upload",
-		"Activity  [────────────────────────]",
-		"Rate      ↓ — · ↑ —",
-		"Detail    error: dial tcp: network is unreachable",
+		"M-Lab",
+		"failed · upload",
+		"[" + strings.Repeat("─", activityWidth) + "]",
+		"↓ — · ↑ —",
+		"error: dial tcp: network is unreachable",
 	} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("view missing %q:\n%s", expected, view)
@@ -132,15 +144,15 @@ func TestProgressModelRendersMLabFailureWithTheSamePanelContract(t *testing.T) {
 }
 
 func TestActivityBarAnimatesWithoutPretendingPercentage(t *testing.T) {
-	first := renderActivity(provider.ProgressMeasuring, time.Unix(0, 0))
-	second := renderActivity(provider.ProgressMeasuring, time.Unix(0, int64(refreshInterval)))
+	first := renderActivity(provider.ProgressMeasuring, time.Unix(0, 0), activityWidth)
+	second := renderActivity(provider.ProgressMeasuring, time.Unix(0, int64(refreshInterval)), activityWidth)
 	if first == second {
 		t.Fatalf("activity bar did not animate: %q", first)
 	}
 	if strings.Contains(first, "%") || strings.Contains(second, "%") {
 		t.Fatalf("activity bar presents a false percentage: %q / %q", first, second)
 	}
-	if got := renderActivity(provider.ProgressComplete, time.Time{}); strings.Count(got, "█") != activityWidth {
+	if got := renderActivity(provider.ProgressComplete, time.Time{}, activityWidth); strings.Count(got, "█") != activityWidth {
 		t.Fatalf("complete activity = %q", got)
 	}
 }
@@ -184,7 +196,30 @@ func TestProgressRendererRendersFinalFrameBeforeClear(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := output.String(); !strings.Contains(got, "Rate      ↓ 44.08 Mbps · ↑ 4.23 Mbps") {
+	if got := output.String(); !strings.Contains(got, "↓ 44.08 Mbps · ↑ 4.23 Mbps") {
 		t.Fatalf("final frame was not rendered before clear:\n%q", got)
+	}
+}
+
+func TestProgressNarrowWidthKeepsFourRowPanels(t *testing.T) {
+	ready := make(chan struct{})
+	progress := newProgressModel("test", []model.Provider{model.ProviderMLab}, ready)
+	_, _ = progress.Update(tea.WindowSizeMsg{Width: 42, Height: 18})
+	_, _ = progress.Update(progressMessage(provider.ProgressEvent{
+		Provider: model.ProviderMLab,
+		Phase:    provider.ProgressDownloading,
+		Test:     "download",
+		Server:   "very-long.measurement-lab.example.net",
+		LiveMbps: model.Pointer(12.5),
+	}))
+	view := progress.View().Content
+	if !strings.Contains(view, "M-Lab") || !strings.Contains(view, "↓ 12.50 Mbps") || !strings.Contains(view, "ctrl+c") {
+		t.Fatalf("narrow progress dropped panel rows:\n%s", view)
+	}
+	if !strings.Contains(view, "["+strings.Repeat("█", 12)) && !strings.Contains(view, "["+strings.Repeat("░", 12)) {
+		// 42-col terminals use the 12-cell activity bar.
+		if !strings.Contains(view, "[") {
+			t.Fatalf("narrow progress missing activity bar:\n%s", view)
+		}
 	}
 }

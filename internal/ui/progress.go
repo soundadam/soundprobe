@@ -6,7 +6,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -24,10 +23,9 @@ const (
 )
 
 const (
-	activityWidth    = 24
-	activityPulse    = 5
-	detailRuneLimit  = 58
-	continuationLead = "          "
+	activityWidth   = 24
+	activityPulse   = 5
+	detailRuneLimit = 58
 )
 
 type ProgressRenderer struct {
@@ -119,6 +117,7 @@ type progressModel struct {
 	order     []model.Provider
 	ready     chan struct{}
 	blank     bool
+	chrome    chrome
 }
 
 type progressMessage provider.ProgressEvent
@@ -143,12 +142,13 @@ func newProgressModel(version string, targets []model.Provider, ready chan struc
 		providers: states,
 		order:     order,
 		ready:     ready,
+		chrome:    newChrome(),
 	}
 }
 
 func (progress *progressModel) Init() tea.Cmd {
 	close(progress.ready)
-	return tick()
+	return tea.Batch(tea.RequestBackgroundColor, tick())
 }
 
 func tick() tea.Cmd {
@@ -159,6 +159,9 @@ func tick() tea.Cmd {
 
 func (progress *progressModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
+	case tea.WindowSizeMsg, tea.BackgroundColorMsg:
+		progress.chrome = progress.chrome.update(message)
+		return progress, nil
 	case progressMessage:
 		progress.applyEvent(provider.ProgressEvent(message))
 		return progress, nil
@@ -221,19 +224,51 @@ func (progress *progressModel) View() tea.View {
 	if progress.blank {
 		return tea.NewView("")
 	}
-	lines := []string{
-		fmt.Sprintf("soundprobe %s", progress.version),
-		fmt.Sprintf("Network   %s", renderNetwork(progress.network)),
-		fmt.Sprintf("Order     %s", renderOrder(progress.order)),
-	}
+	p := progress.chrome.palette
+	body := make([]string, 0, 2+4*len(progress.order))
 	for _, name := range progress.order {
-		lines = append(lines, renderProvider(name, progress.providers[name], progress.now)...)
+		body = append(body, progress.renderProvider(name, progress.providers[name])...)
 	}
-	lines = append(lines,
-		fmt.Sprintf("Elapsed   %s", formatElapsed(progress.now.Sub(progress.startedAt))),
-		"Ctrl-C    cancel",
-	)
-	return tea.NewView(strings.Join(lines, "\n"))
+	body = append(body, progress.chrome.indent(p.Faint(formatElapsed(progress.now.Sub(progress.startedAt)))))
+	return tea.NewView(progress.chrome.render(screen{
+		title:       "soundprobe",
+		version:     progress.version,
+		description: renderNetwork(progress.network),
+		hint:        renderOrder(progress.order),
+		body:        body,
+		help:        []string{progress.chrome.helpKeys("ctrl+c")},
+	}))
+}
+
+func (progress *progressModel) providerLabel(text string, phase provider.ProgressPhase) string {
+	switch {
+	case isActivePhase(phase):
+		return progress.chrome.palette.Accent(text)
+	case phase == provider.ProgressWaiting:
+		return progress.chrome.palette.Faint(text)
+	default:
+		return text
+	}
+}
+
+func (progress *progressModel) renderProvider(name model.Provider, state providerState) []string {
+	p := progress.chrome.palette
+	label := progress.providerLabel(target.Label(name), state.phase)
+	phase := phaseLabel(state.phase, state.test)
+	marker := colorPhase(p, state.phase, phaseMarker(state.phase))
+	status := label + "  " + marker + " " + colorPhase(p, state.phase, phase)
+	if elapsed, ok := providerElapsed(state, progress.now); ok {
+		status += p.Faint(" · " + formatElapsed(elapsed))
+	}
+	bar := renderActivity(state.phase, progress.now, progress.chrome.activityWidth())
+	rates := fmt.Sprintf("↓ %s · ↑ %s", formatMbps(state.downloadMbps), formatMbps(state.uploadMbps))
+	detail := truncateRunes(providerDetail(state), progress.chrome.detailLimit())
+	return []string{
+		progress.chrome.indent(status),
+		progress.chrome.indent(colorActivity(p, state.phase, bar)),
+		progress.chrome.indent(p.Faint(rates)),
+		progress.chrome.indent(colorDetail(p, state, detail)),
+	}
 }
 
 func renderOrder(providers []model.Provider) string {
@@ -241,7 +276,7 @@ func renderOrder(providers []model.Provider) string {
 	for _, provider := range providers {
 		labels = append(labels, target.Label(provider))
 	}
-	return strings.Join(labels, " → ") + " · sequential"
+	return strings.Join(labels, " → ")
 }
 
 func renderNetwork(network model.NetworkContext) string {
@@ -261,20 +296,6 @@ func renderNetwork(network model.NetworkContext) string {
 	return strings.Join(parts, " · ")
 }
 
-func renderProvider(name model.Provider, state providerState, now time.Time) []string {
-	label := target.Label(name)
-	status := fmt.Sprintf("%-20s %s %s", label, phaseMarker(state.phase), phaseLabel(state.phase, state.test))
-	if elapsed, ok := providerElapsed(state, now); ok {
-		status += " · " + formatElapsed(elapsed)
-	}
-	return []string{
-		status,
-		fmt.Sprintf("%sActivity  %s", continuationLead, renderActivity(state.phase, now)),
-		fmt.Sprintf("%sRate      ↓ %s · ↑ %s", continuationLead, formatMbps(state.downloadMbps), formatMbps(state.uploadMbps)),
-		fmt.Sprintf("%sDetail    %s", continuationLead, providerDetail(state)),
-	}
-}
-
 func phaseMarker(phase provider.ProgressPhase) string {
 	switch phase {
 	case provider.ProgressComplete:
@@ -288,6 +309,45 @@ func phaseMarker(phase provider.ProgressPhase) string {
 	default:
 		return "◐"
 	}
+}
+
+func colorPhase(p Palette, phase provider.ProgressPhase, text string) string {
+	switch phase {
+	case provider.ProgressComplete:
+		return p.OK(text)
+	case provider.ProgressFailed:
+		return p.Bad(text)
+	case provider.ProgressCancelled:
+		return p.Faint(text)
+	case provider.ProgressWaiting:
+		return p.Faint(text)
+	default:
+		return p.Knob(text)
+	}
+}
+
+func colorActivity(p Palette, phase provider.ProgressPhase, bar string) string {
+	switch phase {
+	case provider.ProgressComplete:
+		return p.OK(bar)
+	case provider.ProgressFailed:
+		return p.Bad(bar)
+	case provider.ProgressCancelled, provider.ProgressWaiting:
+		return p.Faint(bar)
+	default:
+		return p.Knob(bar)
+	}
+}
+
+func colorDetail(p Palette, state providerState, detail string) string {
+	if state.phase == provider.ProgressFailed {
+		return p.Bad(detail)
+	}
+	return p.Faint(detail)
+}
+
+func isActivePhase(phase provider.ProgressPhase) bool {
+	return !isTerminalPhase(phase) && phase != provider.ProgressWaiting
 }
 
 func phaseLabel(phase provider.ProgressPhase, test string) string {
@@ -318,20 +378,23 @@ func phaseLabel(phase provider.ProgressPhase, test string) string {
 	}
 }
 
-func renderActivity(phase provider.ProgressPhase, now time.Time) string {
+func renderActivity(phase provider.ProgressPhase, now time.Time, width int) string {
+	if width <= 0 {
+		width = activityWidth
+	}
 	if phase == provider.ProgressComplete {
-		return "[" + strings.Repeat("█", activityWidth) + "]"
+		return "[" + strings.Repeat("█", width) + "]"
 	}
 	if phase == provider.ProgressWaiting {
-		return "[" + strings.Repeat("░", activityWidth) + "]"
+		return "[" + strings.Repeat("░", width) + "]"
 	}
 	if phase == provider.ProgressFailed || phase == provider.ProgressCancelled {
-		return "[" + strings.Repeat("─", activityWidth) + "]"
+		return "[" + strings.Repeat("─", width) + "]"
 	}
-	position := int(now.UnixNano()/int64(refreshInterval)) % (activityWidth + activityPulse)
+	position := int(now.UnixNano()/int64(refreshInterval)) % (width + activityPulse)
 	var builder strings.Builder
 	builder.WriteByte('[')
-	for index := 0; index < activityWidth; index++ {
+	for index := 0; index < width; index++ {
 		distance := position - index
 		if distance >= 0 && distance < activityPulse {
 			builder.WriteRune('█')
@@ -345,10 +408,10 @@ func renderActivity(phase provider.ProgressPhase, now time.Time) string {
 
 func providerDetail(state providerState) string {
 	if state.message != "" && (state.phase == provider.ProgressFailed || state.phase == provider.ProgressCancelled) {
-		return truncateRunes("error: "+state.message, detailRuneLimit)
+		return "error: " + state.message
 	}
 	if state.server != "" {
-		return truncateRunes("server "+state.server, detailRuneLimit)
+		return "server " + state.server
 	}
 	switch state.phase {
 	case provider.ProgressWaiting:
@@ -387,17 +450,6 @@ func providerElapsed(state providerState, now time.Time) (time.Duration, bool) {
 
 func isTerminalPhase(phase provider.ProgressPhase) bool {
 	return phase == provider.ProgressComplete || phase == provider.ProgressFailed || phase == provider.ProgressCancelled
-}
-
-func truncateRunes(value string, limit int) string {
-	if limit <= 0 || utf8.RuneCountInString(value) <= limit {
-		return value
-	}
-	runes := []rune(value)
-	if limit == 1 {
-		return "…"
-	}
-	return string(runes[:limit-1]) + "…"
 }
 
 func formatMbps(value *float64) string {

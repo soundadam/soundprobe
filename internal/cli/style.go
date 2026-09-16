@@ -8,11 +8,13 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
+
+	"github.com/soundadam/soundprobe/internal/ui"
 )
 
-// styleSet holds the lipgloss styles used for human-readable output. When
-// disabled (stdout is not a TTY) every helper returns its input unchanged so
-// redirected output stays plain text.
+// styleSet holds the Charm/teaway lipgloss styles used for human-readable
+// output. When disabled (stdout is not a TTY) every helper returns its input
+// unchanged so redirected output stays plain text.
 type styleSet struct {
 	enabled bool
 	title   lipgloss.Style
@@ -25,15 +27,16 @@ type styleSet struct {
 }
 
 func newStyleSet(enabled bool) styleSet {
+	palette := ui.DefaultPalette()
 	return styleSet{
 		enabled: enabled,
-		title:   lipgloss.NewStyle().Bold(true),
-		header:  lipgloss.NewStyle().Faint(true),
-		dim:     lipgloss.NewStyle().Faint(true),
-		ok:      lipgloss.NewStyle().Foreground(lipgloss.Green),
-		warn:    lipgloss.NewStyle().Foreground(lipgloss.Yellow),
-		bad:     lipgloss.NewStyle().Foreground(lipgloss.Red),
-		accent:  lipgloss.NewStyle().Foreground(lipgloss.Cyan),
+		title:   palette.TitleStyle(),
+		header:  palette.FaintStyle(),
+		dim:     palette.FaintStyle(),
+		ok:      palette.OKStyle(),
+		warn:    palette.WarnStyle(),
+		bad:     palette.BadStyle(),
+		accent:  palette.AccentStyle().Bold(false),
 	}
 }
 

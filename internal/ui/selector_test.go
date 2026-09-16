@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/soundadam/soundprobe/internal/model"
 	"github.com/soundadam/soundprobe/internal/preferences"
@@ -22,10 +23,13 @@ func TestSelectorRecommendsCampusWhenReachable(t *testing.T) {
 		t.Fatalf("selection = %#v", selector.selected)
 	}
 	view := selector.View().Content
-	for _, expected := range []string{"soundprobe", "select measurement targets", "NJU Campus", "NJU Edge", "M-Lab", "[4] IPv4", "Space toggle"} {
+	for _, expected := range []string{"soundprobe", "select measurement targets", "NJU Campus", "NJU Edge", "M-Lab", "ipv4", "space", "enter", "q"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("view missing %q:\n%s", expected, view)
 		}
+	}
+	if strings.Contains(view, "Error:") || strings.Contains(view, "Space toggle") || strings.Contains(view, "[4] IPv4") {
+		t.Fatalf("view still uses the pre-Charm chrome:\n%s", view)
 	}
 }
 
@@ -85,10 +89,100 @@ func TestSelectorDeselectsIPv4OnlyStationForIPv6(t *testing.T) {
 	}
 }
 
-func key(value string) tea.KeyPressMsg {
-	runeValue := rune(value[0])
-	if value == "enter" {
-		return tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})
+func TestSelectorCyclesFamilyWithArrows(t *testing.T) {
+	selector := newSelectorModel("test", nil)
+	if selector.family != target.FamilyIPv4 {
+		t.Fatalf("family = %s", selector.family)
 	}
-	return tea.KeyPressMsg(tea.Key{Text: value, Code: runeValue})
+	_, _ = selector.Update(key("right"))
+	if selector.family != target.FamilyIPv6 {
+		t.Fatalf("right: family = %s", selector.family)
+	}
+	_, _ = selector.Update(key("left"))
+	if selector.family != target.FamilyIPv4 {
+		t.Fatalf("left: family = %s", selector.family)
+	}
+	_, _ = selector.Update(key("left"))
+	if selector.family != target.FamilyDual {
+		t.Fatalf("wrap left: family = %s", selector.family)
+	}
+}
+
+func TestSelectorHomeEndAndEmptySelectionError(t *testing.T) {
+	selector := newSelectorModel("test", nil)
+	if len(selector.stations) < 2 {
+		t.Fatal("need at least two stations")
+	}
+	_, _ = selector.Update(key("end"))
+	if selector.cursor != len(selector.stations)-1 {
+		t.Fatalf("end: cursor = %d", selector.cursor)
+	}
+	_, _ = selector.Update(key("home"))
+	if selector.cursor != 0 {
+		t.Fatalf("home: cursor = %d", selector.cursor)
+	}
+	selector.selected = map[string]bool{}
+	_, _ = selector.Update(key("enter"))
+	view := selector.View().Content
+	if selector.done {
+		t.Fatal("empty selection should not start")
+	}
+	if !strings.Contains(view, "select at least one measurement target") {
+		t.Fatalf("missing validation sentence:\n%s", view)
+	}
+	if strings.Contains(view, "Error:") {
+		t.Fatalf("error should be a short sentence, not a labeled dump:\n%s", view)
+	}
+}
+
+func TestSelectorNarrowWidthKeepsKeysAndTruncates(t *testing.T) {
+	selector := newSelectorModel("test", nil)
+	_, _ = selector.Update(tea.WindowSizeMsg{Width: 40, Height: 16})
+	view := selector.View().Content
+	if !strings.Contains(view, "space") || !strings.Contains(view, "enter") {
+		t.Fatalf("narrow view dropped keys:\n%s", view)
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if lipgloss.Width(line) > 48 {
+			t.Fatalf("narrow line too wide (%d): %q", lipgloss.Width(line), line)
+		}
+	}
+}
+
+func TestSelectorCancelClearsView(t *testing.T) {
+	selector := newSelectorModel("test", nil)
+	modelValue, command := selector.Update(key("esc"))
+	result := modelValue.(*selectorModel)
+	if command == nil || !result.cancelled {
+		t.Fatal("esc should cancel")
+	}
+	if result.View().Content != "" {
+		t.Fatalf("cancelled selector was not cleared: %q", result.View().Content)
+	}
+}
+
+func key(value string) tea.KeyPressMsg {
+	switch value {
+	case "enter":
+		return tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})
+	case "up":
+		return tea.KeyPressMsg(tea.Key{Code: tea.KeyUp})
+	case "down":
+		return tea.KeyPressMsg(tea.Key{Code: tea.KeyDown})
+	case "left":
+		return tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft})
+	case "right":
+		return tea.KeyPressMsg(tea.Key{Code: tea.KeyRight})
+	case "home":
+		return tea.KeyPressMsg(tea.Key{Code: tea.KeyHome})
+	case "end":
+		return tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd})
+	case "esc":
+		return tea.KeyPressMsg(tea.Key{Code: tea.KeyEsc})
+	case "space":
+		return tea.KeyPressMsg(tea.Key{Code: tea.KeySpace, Text: " "})
+	default:
+		runeValue := rune(value[0])
+		return tea.KeyPressMsg(tea.Key{Text: value, Code: runeValue})
+	}
 }
