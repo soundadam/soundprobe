@@ -104,6 +104,13 @@ func TestBareCommandRunsBothProvidersAfterConsent(t *testing.T) {
 	if !strings.Contains(stdout.String(), "NJU Campus · IPv4") || !strings.Contains(stdout.String(), "M-Lab") {
 		t.Fatalf("summary output missing targets: %q", stdout.String())
 	}
+	output := stdout.String()
+	if !strings.Contains(output, "soundprobe\n") || !strings.Contains(output, "  success ·") {
+		t.Fatalf("summary missing teaway-style header:\n%s", output)
+	}
+	if strings.Contains(output, "TARGET") || strings.Contains(output, "Run ") {
+		t.Fatalf("summary still uses dated chrome:\n%s", output)
+	}
 }
 
 func TestRunDefaultsToCampusMLabAndApple(t *testing.T) {

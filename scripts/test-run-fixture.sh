@@ -260,11 +260,11 @@ if process.wait() != 0:
     raise SystemExit(f"interactive fixture exit code {process.returncode}")
 raw = bytes(output)
 assert b"\x1b[?1049h" not in raw, "alternate screen was enabled"
-assert raw.count(b"Run ") == 1, "final summary was not durable and unique"
-assert b"TARGET" in raw and b"NJU Campus" in raw and b"M-Lab" in raw
+assert raw.count(b"Target") == 1, "final summary was not durable and unique"
+assert b"Target" in raw and b"NJU Campus" in raw and b"M-Lab" in raw
 assert b'"Key":"measurement"' not in raw, "provider events leaked"
 assert b'"type":"progress"' not in raw, "LibreSpeed progress events leaked"
-assert b"Ctrl-C" in raw, "interactive fixed block was not rendered"
+assert b"ctrl+c" in raw, "interactive fixed block was not rendered"
 PY
 
 printf '%s\n' 'Offline combined run fixture test passed.'

@@ -3,9 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -25,6 +23,7 @@ type setupModel struct {
 	done      bool
 	cancelled bool
 	errorText string
+	dark      bool
 }
 
 func Configure(ctx context.Context, input io.Reader, output io.Writer, version string, current preferences.Config) (preferences.Config, error) {
@@ -61,12 +60,16 @@ func newSetupModel(version string, current preferences.Config) *setupModel {
 	for _, id := range current.DailyStations {
 		selected[id] = true
 	}
-	return &setupModel{version: version, language: current.Language, stations: stations, selected: selected}
+	return &setupModel{version: version, language: current.Language, stations: stations, selected: selected, dark: true}
 }
 
 func (setup *setupModel) Init() tea.Cmd { return nil }
 
 func (setup *setupModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	if bg, ok := message.(tea.BackgroundColorMsg); ok {
+		setup.dark = bg.IsDark()
+		return setup, nil
+	}
 	key, ok := message.(tea.KeyPressMsg)
 	if !ok {
 		return setup, nil
@@ -118,52 +121,49 @@ func (setup *setupModel) View() tea.View {
 	if setup.done || setup.cancelled {
 		return tea.NewView("")
 	}
+	theme := NewTheme(setup.dark)
 	if setup.screen == 0 {
-		zh, en := "  中文  ", "  English  "
-		if setup.language == preferences.LanguageChinese {
-			zh = "› 中文"
-		} else {
-			en = "› English"
-		}
-		return tea.NewView(strings.Join([]string{
-			fmt.Sprintf("soundprobe %s · welcome / 欢迎", setup.version),
-			"",
-			"Choose interface language / 选择界面语言",
-			"",
-			zh + "     " + en,
-			"",
-			"←/→ switch   Enter continue   q cancel",
-		}, "\n"))
+		return tea.NewView(setup.languageView(theme))
 	}
-	lines := []string{
-		fmt.Sprintf("soundprobe %s · %s", setup.version, setup.text("选择日常测速站", "choose daily stations")),
-		setup.text("以后直接运行 soundprobe 时只显示这些站点，可用 soundprobe setup 修改。", "Only these stations appear in daily use. Run soundprobe setup to change them."),
+	return tea.NewView(setup.stationsView(theme))
+}
+
+func (setup *setupModel) languageView(theme Theme) string {
+	zh, en := "中文", "English"
+	if setup.language == preferences.LanguageChinese {
+		zh = theme.Value.Render("› 中文")
+	} else {
+		en = theme.Value.Render("› English")
+	}
+	return renderFrame(theme, []string{
+		theme.Faint.Render("Language / 语言"),
+		"",
+		zh + "     " + en,
+	}, []string{theme.help("←  →", "enter", "q")})
+}
+
+func (setup *setupModel) stationsView(theme Theme) string {
+	body := []string{
+		setup.text("选择日常测速站", "Daily stations"),
+		theme.Faint.Render(setup.text("以后直接运行 soundprobe 时只显示这些站点。", "Only these stations appear in daily use.")),
 		"",
 	}
 	for index, station := range setup.stations {
-		cursor := "  "
-		if index == setup.cursor {
-			cursor = "› "
-		}
-		check := "[ ]"
-		if setup.selected[station.ID] {
-			check = "[x]"
-		}
 		description, useCase := station.Description, station.UseCase
 		if setup.language == preferences.LanguageChinese {
 			description, useCase = station.DescriptionZH, station.UseCaseZH
 		}
-		lines = append(lines, fmt.Sprintf("%s%s %-12s %s", cursor, check, station.Label, description), "      "+useCase)
+		body = append(body, choiceRow(theme, index == setup.cursor, setup.selected[station.ID], true, station.Label, description)...)
+		body = append(body, "       "+theme.Faint.Render(useCase))
 	}
-	lines = append(lines, "",
-		setup.text("网页测速（不加入日常 CLI）：南大 http://test.nju.edu.cn · 中科大 https://test.ustc.edu.cn", "Web tests (not daily CLI): NJU http://test.nju.edu.cn · USTC https://test.ustc.edu.cn"),
-		"",
-		setup.text("↑/↓ 移动   Space 选择   Enter 保存   b 返回   q 取消", "↑/↓ move   Space toggle   Enter save   b back   q cancel"),
+	body = append(body, "",
+		theme.Faint.Render(setup.text("网页测速（不加入日常 CLI）：南大 http://test.nju.edu.cn · 中科大 https://test.ustc.edu.cn", "Web tests (not daily CLI): NJU http://test.nju.edu.cn · USTC https://test.ustc.edu.cn")),
 	)
+	help := []string{theme.help("↑  ↓", "space", "enter", "b", "q")}
 	if setup.errorText != "" {
-		lines = append(lines, setup.errorText)
+		help = append(help, theme.Bad.Render(setup.errorText))
 	}
-	return tea.NewView(strings.Join(lines, "\n"))
+	return renderFrame(theme, body, help)
 }
 
 func (setup *setupModel) selectedIDs() []string {

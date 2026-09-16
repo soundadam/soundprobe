@@ -8,6 +8,8 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
+
+	"github.com/soundadam/soundprobe/internal/ui"
 )
 
 // styleSet holds the lipgloss styles used for human-readable output. When
@@ -25,15 +27,16 @@ type styleSet struct {
 }
 
 func newStyleSet(enabled bool) styleSet {
+	theme := ui.NewTheme(true)
 	return styleSet{
 		enabled: enabled,
-		title:   lipgloss.NewStyle().Bold(true),
-		header:  lipgloss.NewStyle().Faint(true),
-		dim:     lipgloss.NewStyle().Faint(true),
-		ok:      lipgloss.NewStyle().Foreground(lipgloss.Green),
-		warn:    lipgloss.NewStyle().Foreground(lipgloss.Yellow),
-		bad:     lipgloss.NewStyle().Foreground(lipgloss.Red),
-		accent:  lipgloss.NewStyle().Foreground(lipgloss.Cyan),
+		title:   theme.Title,
+		header:  theme.Faint,
+		dim:     theme.Faint,
+		ok:      theme.OK,
+		warn:    theme.Warn,
+		bad:     theme.Bad,
+		accent:  theme.Accent,
 	}
 }
 

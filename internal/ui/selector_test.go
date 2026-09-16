@@ -21,8 +21,8 @@ func TestSelectorRecommendsCampusWhenReachable(t *testing.T) {
 	if !selector.selected["nju-campus"] || !selector.selected["mlab"] || selector.selected["apple"] != appleExpected || selector.selected["ookla"] || selector.selected["nju-edge"] {
 		t.Fatalf("selection = %#v", selector.selected)
 	}
-	view := selector.View().Content
-	for _, expected := range []string{"soundprobe", "select measurement targets", "NJU Campus", "NJU Edge", "M-Lab", "[4] IPv4", "Space toggle"} {
+	view := stripANSI(selector.View().Content)
+	for _, expected := range []string{"soundprobe", "Select stations", "NJU Campus", "NJU Edge", "M-Lab", "IPv4", "space"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("view missing %q:\n%s", expected, view)
 		}
@@ -47,7 +47,7 @@ func TestConfiguredSelectorShowsOnlyDailyStationsInPriorityOrder(t *testing.T) {
 	if len(selector.stations) != 2 || selector.stations[0].ID != "tongji" || selector.stations[1].ID != "qlu" {
 		t.Fatalf("stations = %#v", selector.stations)
 	}
-	view := selector.View().Content
+	view := stripANSI(selector.View().Content)
 	if !strings.Contains(view, "选择测速站") || !strings.Contains(view, "同济大学 · 上海") || strings.Contains(view, "M-Lab") {
 		t.Fatalf("configured view:\n%s", view)
 	}
@@ -73,6 +73,19 @@ func TestSelectorBuildsDualStackPlan(t *testing.T) {
 	}
 	if result.View().Content != "" {
 		t.Fatalf("completed selector was not cleared: %q", result.View().Content)
+	}
+}
+
+func TestSelectorShowsErrorWithoutDatedPrefix(t *testing.T) {
+	selector := newSelectorModel("test", nil)
+	selector.selected = map[string]bool{}
+	_, _ = selector.Update(key("enter"))
+	view := stripANSI(selector.View().Content)
+	if !strings.Contains(view, "select at least one measurement target") {
+		t.Fatalf("missing error:\n%s", view)
+	}
+	if strings.Contains(view, "Error:") {
+		t.Fatalf("error still uses dated prefix:\n%s", view)
 	}
 }
 

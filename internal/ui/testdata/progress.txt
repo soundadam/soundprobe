@@ -1,0 +1,18 @@
+soundprobe
+
+  Measuring
+  00:12
+  en0 · wifi · NJU-WLAN
+  NJU Campus · IPv4 → M-Lab
+
+  NJU Campus · IPv4    ✓ Complete · 00:00
+  ├━━━━━━━━━━━━━━━━━━━━━━┤
+  ↓ 876.54 Mbps · ↑ 345.67 Mbps
+  speed.nju.edu.cn
+
+  M-Lab                ◐ Downloading · 00:00
+  ├────────●─────────────┤
+  ↓ 80.00 Mbps · ↑ —
+  ndt.example.net
+
+  ctrl+c

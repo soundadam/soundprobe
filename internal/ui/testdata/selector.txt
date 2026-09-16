@@ -1,0 +1,15 @@
+soundprobe
+
+  Select stations
+  IPv4
+
+  › [x]  NJU Campus   NJU campus-internal service
+         ipv4 reachable 12ms
+    [x]  M-Lab        public Internet NDT7 measurement
+         automatic node
+    [ ]  Tongji       Tongji University · Shanghai
+         ipv4 reachable
+
+  ↑  ↓   space   a   enter   q
+  4   6   d
+  soundprobe setup

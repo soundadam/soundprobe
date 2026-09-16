@@ -473,12 +473,14 @@ func (app *App) executeStations(ctx context.Context, jsonMode bool) int {
 		return 0
 	}
 	out, styles := app.humanOutput()
+	fmt.Fprintln(out, styles.Title("soundprobe"))
+	fmt.Fprintln(out)
 	rows := [][]string{{
-		styles.Header("STATION"),
-		styles.Header("FAMILY"),
-		styles.Header("STATUS"),
-		styles.Header("LATENCY"),
-		styles.Header("DETAIL"),
+		styles.Header("Station"),
+		styles.Header("Family"),
+		styles.Header("Status"),
+		styles.Header("Latency"),
+		styles.Header("Detail"),
 	}}
 	for _, result := range results {
 		latency := "—"
@@ -676,15 +678,16 @@ func (app *App) renderDoctor(checks, optionalChecks map[string]string, consentAc
 		}
 		return styles.Warn("false")
 	}
-	fmt.Fprintln(out, styles.Title(fmt.Sprintf("soundprobe %s diagnostics", app.Version)))
+	fmt.Fprintln(out, styles.Title("soundprobe"))
+	fmt.Fprintln(out, "  "+styles.Dim("Diagnostics"))
 	writeAligned(out, [][]string{
-		{"Campus", readiness(checks["campus"], false)},
-		{"M-Lab", readiness(checks["mlab"], false)},
-		{"Apple", readiness(optionalChecks["apple"], true)},
-		{"Ookla", readiness(optionalChecks["ookla"], true)},
-		{"Consent", boolWord(consentAccepted)},
-		{"Combined", boolWord(combinedReady)},
-		{"History", styles.Dim(historyPath)},
+		{"  Campus", readiness(checks["campus"], false)},
+		{"  M-Lab", readiness(checks["mlab"], false)},
+		{"  Apple", readiness(optionalChecks["apple"], true)},
+		{"  Ookla", readiness(optionalChecks["ookla"], true)},
+		{"  Consent", boolWord(consentAccepted)},
+		{"  Combined", boolWord(combinedReady)},
+		{"  History", styles.Dim(historyPath)},
 	})
 }
 
@@ -709,11 +712,13 @@ func (app *App) executeConsentStatus(jsonMode bool) int {
 	}
 	out, styles := app.humanOutput()
 	if accepted {
-		fmt.Fprintln(out, styles.OK(fmt.Sprintf("M-Lab consent accepted (%s at %s).", record.PolicyVersion, record.AcceptedAt.Format(time.RFC3339))))
+		fmt.Fprintln(out, styles.Title("soundprobe"))
+		fmt.Fprintln(out, "  "+styles.OK(fmt.Sprintf("M-Lab consent accepted (%s at %s).", record.PolicyVersion, record.AcceptedAt.Format(time.RFC3339))))
 	} else {
-		fmt.Fprintln(out, styles.Warn(fmt.Sprintf("M-Lab consent is not accepted for current policy %s.", consent.PolicyVersion)))
+		fmt.Fprintln(out, styles.Title("soundprobe"))
+		fmt.Fprintln(out, "  "+styles.Warn(fmt.Sprintf("M-Lab consent is not accepted for current policy %s.", consent.PolicyVersion)))
 	}
-	fmt.Fprintf(out, "Policy: %s\n", styles.Accent(consent.PolicyURL))
+	fmt.Fprintf(out, "  Policy: %s\n", styles.Accent(consent.PolicyURL))
 	return 0
 }
 
@@ -759,11 +764,12 @@ func (app *App) promptAndAcceptConsent(jsonMode bool) int {
 		return app.fail(jsonMode, "consent_requires_interaction", "consent acceptance requires an interactive terminal", 1)
 	}
 	out, styles := app.humanOutput()
-	fmt.Fprintln(out, styles.Title("M-Lab measurement consent"))
-	fmt.Fprintln(out, "M-Lab collects the ISP-provided public IP address and measurement results.")
-	fmt.Fprintln(out, "M-Lab publishes and retains experiment data indefinitely.")
-	fmt.Fprintf(out, "Policy %s: %s\n", consent.PolicyVersion, styles.Accent(consent.PolicyURL))
-	fmt.Fprint(out, styles.Title("Type accept to continue: "))
+	fmt.Fprintln(out, styles.Title("soundprobe"))
+	fmt.Fprintln(out, "  "+styles.Dim("M-Lab consent"))
+	fmt.Fprintln(out, "  M-Lab collects the ISP-provided public IP address and measurement results.")
+	fmt.Fprintln(out, "  M-Lab publishes and retains experiment data indefinitely.")
+	fmt.Fprintf(out, "  Policy %s: %s\n", consent.PolicyVersion, styles.Accent(consent.PolicyURL))
+	fmt.Fprint(out, "  "+styles.Title("Type accept to continue: "))
 	scanner := bufio.NewScanner(app.In)
 	if !scanner.Scan() {
 		return app.fail(jsonMode, "consent_declined", "consent was not accepted", 1)
@@ -781,22 +787,23 @@ func (app *App) promptAndAcceptConsent(jsonMode bool) int {
 
 func (app *App) renderSummary(summary model.RunSummary) {
 	out, styles := app.humanOutput()
-	fmt.Fprintf(out, "%s · %s · %s\n",
-		styles.Title("soundprobe "+summary.ToolVersion),
+	fmt.Fprintln(out, styles.Title("soundprobe"))
+	fmt.Fprintf(out, "  %s · %s\n",
 		styles.Status(string(summary.Status)),
 		styles.Dim(formatDuration(summary.EndedAt.Sub(summary.StartedAt))),
 	)
-	fmt.Fprintln(out, styles.Dim("Run "+summary.RunID))
+	fmt.Fprintln(out, "  "+styles.Dim(summary.RunID))
 	if network := formatNetworkContext(summary.Network); network != "" {
-		fmt.Fprintln(out, styles.Dim("Network "+network))
+		fmt.Fprintln(out, "  "+styles.Dim(network))
 	}
+	fmt.Fprintln(out)
 	rows := [][]string{{
-		styles.Header("TARGET"),
-		styles.Header("METHOD"),
-		styles.Header("DOWNLOAD"),
-		styles.Header("UPLOAD"),
-		styles.Header("SERVER"),
-		styles.Header("STATUS"),
+		styles.Header("Target"),
+		styles.Header("Method"),
+		styles.Header("Download"),
+		styles.Header("Upload"),
+		styles.Header("Server"),
+		styles.Header("Status"),
 	}}
 	for _, measurement := range summary.Measurements {
 		rows = append(rows, []string{
@@ -824,15 +831,18 @@ func (app *App) renderSummary(summary model.RunSummary) {
 func (app *App) renderHistory(summaries []model.RunSummary) {
 	out, styles := app.humanOutput()
 	if len(summaries) == 0 {
-		fmt.Fprintln(out, "No saved runs.")
+		fmt.Fprintln(out, styles.Title("soundprobe"))
+		fmt.Fprintln(out, "  "+styles.Dim("No saved runs"))
 		return
 	}
+	fmt.Fprintln(out, styles.Title("soundprobe"))
+	fmt.Fprintln(out)
 	rows := [][]string{{
-		styles.Header("RUN ID"),
-		styles.Header("STARTED"),
-		styles.Header("COMMAND"),
-		styles.Header("STATUS"),
-		styles.Header("LABEL"),
+		styles.Header("Run ID"),
+		styles.Header("Started"),
+		styles.Header("Command"),
+		styles.Header("Status"),
+		styles.Header("Label"),
 	}}
 	for _, summary := range summaries {
 		rows = append(rows, []string{

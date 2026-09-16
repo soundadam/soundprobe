@@ -30,12 +30,14 @@ Windows，Go 编写，终端界面基于 Bubble Tea 内联渲染。
 ```text
 $ soundprobe run --targets nju-campus,mlab,apple --family ipv4
 
-soundprobe v0.4.0 · success · 34.2s
-Run 8f3c1a2b
-Network en0 · wifi · NJU-WLAN
-TARGET                METHOD                   DOWNLOAD     UPLOAD      SERVER                       STATUS
-NJU Campus IPv4       librespeed-three-stream  812.44 Mbps  93.10 Mbps  speed.nju.edu.cn             success
-M-Lab NDT7            ndt7-single-stream       203.52 Mbps  41.87 Mbps  ndt-abc12.measurement-lab    success
+soundprobe
+  success · 34.2s
+  8f3c1a2b
+  en0 · wifi · NJU-WLAN
+
+Target                Method                   Download     Upload      Server                       Status
+NJU Campus · IPv4     librespeed-three-stream  812.44 Mbps  93.10 Mbps  speed.nju.edu.cn             success
+M-Lab                 ndt7-single-stream       203.52 Mbps  41.87 Mbps  ndt-abc12.measurement-lab    success
 Apple networkQuality  apple-networkquality     486.20 Mbps  88.31 Mbps  —                            success
 ```
 

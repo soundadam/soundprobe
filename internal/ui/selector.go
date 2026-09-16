@@ -30,6 +30,7 @@ type selectorModel struct {
 	cancelled bool
 	errorText string
 	language  preferences.Language
+	dark      bool
 }
 
 func SelectPlan(ctx context.Context, input io.Reader, output io.Writer, version string) (target.Plan, error) {
@@ -105,6 +106,7 @@ func newSelectorModelConfigured(version string, probeResults []target.ProbeResul
 		family:   target.FamilyIPv4,
 		selected: map[string]bool{},
 		language: language,
+		dark:     true,
 	}
 	model.applyRecommendation()
 	return model
@@ -115,6 +117,10 @@ func (selector *selectorModel) Init() tea.Cmd {
 }
 
 func (selector *selectorModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	if bg, ok := message.(tea.BackgroundColorMsg); ok {
+		selector.dark = bg.IsDark()
+		return selector, nil
+	}
 	key, ok := message.(tea.KeyPressMsg)
 	if !ok {
 		return selector, nil
@@ -169,42 +175,44 @@ func (selector *selectorModel) View() tea.View {
 	if selector.done || selector.cancelled {
 		return tea.NewView("")
 	}
-	lines := []string{
-		fmt.Sprintf("soundprobe %s · %s", selector.version, selector.text("选择测速站", "select measurement targets")),
-		fmt.Sprintf("%s  %s   [4] IPv4  [6] IPv6  [d] dual", selector.text("地址族", "Address family"), selector.family),
+	theme := NewTheme(selector.dark)
+	body := []string{
+		selector.text("选择测速站", "Select stations"),
+		theme.Value.Render(familyLabel(selector.family)),
 		"",
 	}
 	for index, station := range selector.stations {
-		cursor := "  "
-		if index == selector.cursor {
-			cursor = "› "
-		}
-		check := "[ ]"
-		if selector.selected[station.ID] {
-			check = "[x]"
-		}
-		if !selector.stationSupported(station, selector.family) {
-			check = "[-]"
-		}
-		status := selector.stationStatus(station)
 		description := station.Description
 		if selector.language == preferences.LanguageChinese {
 			description = station.DescriptionZH
 		}
-		lines = append(lines,
-			fmt.Sprintf("%s%s %-12s %s", cursor, check, station.Label, truncateRunes(description, 44)),
-			fmt.Sprintf("      %s", truncateRunes(status, 68)),
-		)
+		supported := selector.stationSupported(station, selector.family)
+		body = append(body, choiceRow(theme, index == selector.cursor, selector.selected[station.ID], supported, station.Label, truncateRunes(description, 44))...)
+		status := selector.stationStatus(station)
+		body = append(body, "       "+theme.Faint.Render(truncateRunes(status, 68)))
 	}
-	lines = append(lines,
-		"",
-		selector.text("↑/↓ 移动   Space 选择   a 推荐   Enter 开始   q 取消", "↑/↓ move   Space toggle   a recommended   Enter start   q cancel"),
-		selector.text("修改日常站点：soundprobe setup", "Change daily stations: soundprobe setup"),
-	)
+	help := []string{
+		theme.help("↑  ↓", "space", "a", "enter", "q"),
+		theme.help("4", "6", "d"),
+		theme.Faint.Render(selector.text("修改日常站点：soundprobe setup", "soundprobe setup")),
+	}
 	if selector.errorText != "" {
-		lines = append(lines, "Error: "+selector.errorText)
+		help = append(help, theme.Bad.Render(selector.errorText))
 	}
-	return tea.NewView(strings.Join(lines, "\n"))
+	return tea.NewView(renderFrame(theme, body, help))
+}
+
+func familyLabel(family target.Family) string {
+	switch family {
+	case target.FamilyIPv4:
+		return "IPv4"
+	case target.FamilyIPv6:
+		return "IPv6"
+	case target.FamilyDual:
+		return "Dual"
+	default:
+		return string(family)
+	}
 }
 
 func (selector *selectorModel) selectedIDs() []string {
