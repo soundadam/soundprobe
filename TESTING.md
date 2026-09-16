@@ -14,7 +14,7 @@ The offline gate runs package tests, vet, executable-level mock-helper fixtures,
 Homebrew template checks, and deterministic release artifact tests. It covers:
 
 - station registry and IPv4/IPv6/dual expansion;
-- explicit provider IDs such as `nju-campus-ipv4` and `nju-edge-ipv6`;
+- explicit provider IDs such as `nju-campus-ipv4` and `tongji-ipv4`;
 - selector recommendation, target toggling, family changes, and cancellation;
 - sequential multi-target execution and skipped targets after cancellation;
 - LibreSpeed arguments with telemetry disabled;
@@ -137,7 +137,7 @@ Check:
 - later bare runs show only the configured daily stations;
 - the selector clears before progress begins;
 - NJU Campus plus M-Lab and Apple are recommended; Ookla is never auto-selected;
-- NJU Edge is omitted from daily CLI choices and its error points to the web test;
+- `nju-edge` and `qlu` do not appear in the selector or setup catalogs;
 - `4`, `6`, and `d` switch family modes;
 - IPv4-only domestic stations are disabled in IPv6 mode;
 - Space toggles stations and Enter starts the exact visible order;
@@ -163,27 +163,24 @@ nju-campus-ipv6
 
 The IPv6 result must never contain an IPv4 family or server.
 
-### Public Edge limitation
+Unknown retired IDs must fail before measurement:
 
 ```sh
-./bin/soundprobe edge --no-save --json
 ./bin/soundprobe run --targets nju-edge --family dual --no-save --json
+./bin/soundprobe run --targets qlu --family ipv4 --no-save --json
+./bin/soundprobe edge --no-save --json
 ```
 
-Both commands must exit `1` before starting LibreSpeed and report that NJU Edge
-is unavailable in terminal mode because its official backend requires browser
-verification. `soundprobe stations` must show both Edge families as `unsupported`.
-Do not add automated challenge solving to the acceptance test.
+These must exit `1` as unknown targets/commands. They must not appear in
+`soundprobe stations`.
 
 ## 7. Domestic station acceptance
 
-Run the two default regional stations before a complete batch. CERNET remains
-an explicit compatibility probe and is expected to fail cleanly while its
-current backend is unreachable:
+CERNET remains an explicit compatibility probe and is expected to fail cleanly
+while its current backend is unreachable:
 
 ```sh
 ./bin/soundprobe run --targets cernet --family ipv4 --no-save --json
-./bin/soundprobe run --targets qlu --family ipv4 --no-save --json
 ./bin/soundprobe run --targets tongji --family ipv4 --no-save --json
 ```
 
@@ -196,7 +193,7 @@ Then validate sequential batch behavior:
 Expected target order:
 
 ```json
-["tongji-ipv4", "qlu-ipv4"]
+["tongji-ipv4"]
 ```
 
 One failed station must not stop later stations. Inspect helper arguments during
@@ -219,7 +216,7 @@ must not prevent M-Lab from running when it is later in the selected plan.
 
 For an interactive combined plan, verify:
 
-- explicit labels such as `NJU Edge · IPv6`;
+- explicit labels such as `NJU Campus · IPv6`;
 - one equal four-row panel per target;
 - fixed panel height while live M-Lab events arrive;
 - observed LibreSpeed rates with no fabricated samples or percentage;

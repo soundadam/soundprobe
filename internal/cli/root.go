@@ -82,7 +82,7 @@ global --json flag prints a single machine-readable document on stdout.`,
   soundprobe
 
   # measure specific stations over both address families
-  soundprobe run --targets nju-campus,qlu --family dual
+  soundprobe run --targets nju-campus,tongji --family dual
 
   # machine-readable output for automation
   soundprobe run --json --no-save`,
@@ -108,7 +108,7 @@ of stations instead (list IDs with "soundprobe stations").`,
   soundprobe run
 
   # pick stations and address families explicitly
-  soundprobe run --targets nju-campus,qlu --family dual
+  soundprobe run --targets nju-campus,tongji --family dual
 
   # label a run without saving it to history
   soundprobe run --label dorm-wifi --no-save`),
@@ -118,16 +118,11 @@ of stations instead (list IDs with "soundprobe stations").`,
 by default; pass --ipv6 to use the IPv6 service instead.`,
 			`  soundprobe campus
   soundprobe campus --ipv6 --label dorm-wifi`),
-		app.newMeasureCommand(state, model.CommandEdge,
-			"Measure the NJU edge station",
-			`Edge targets the NJU edge speed station. This station is currently
-web-only; the command reports the browser URLs to use instead.`,
-			`  soundprobe edge`),
 		app.newMeasureCommand(state, model.CommandDomestic,
 			"Measure domestic education stations",
 			`Domestic measures publicly reachable domestic education stations over
-IPv4. It defaults to tongji and qlu; restrict or reorder the set with
---targets (cernet, qlu, tongji).`,
+IPv4. It defaults to tongji; restrict or reorder the set with
+--targets (cernet, tongji).`,
 			`  soundprobe domestic
   soundprobe domestic --targets tongji`),
 		app.newMeasureCommand(state, model.CommandMLab,
@@ -182,7 +177,7 @@ func (app *App) newMeasureCommand(state *execution, command model.Command, short
 		flags.StringVar(&options.targets, "targets", "", `comma-separated station IDs (see "soundprobe stations")`)
 		flags.StringVar(&options.family, "family", string(target.FamilyIPv4), "address family: ipv4, ipv6, or dual")
 	}
-	if command == model.CommandCampus || command == model.CommandEdge {
+	if command == model.CommandCampus {
 		flags.BoolVar(&options.ipv4, "ipv4", false, "use the IPv4 service")
 		flags.BoolVar(&options.ipv6, "ipv6", false, "use the IPv6 service")
 	}
@@ -197,7 +192,7 @@ func (app *App) newStationsCommand(state *execution) *cobra.Command {
 		Use:   "stations",
 		Short: "List stations and probe reachability",
 		Long: `Stations lists every known speed station and probes its reachability from
-the current network, including stations that are web-only or automatic.`,
+the current network, including automatic providers.`,
 		GroupID: groupMeasure,
 		Args:    rejectArgs("stations does not accept arguments"),
 		RunE: func(cmd *cobra.Command, _ []string) error {

@@ -420,10 +420,8 @@ func resolvePlan(command model.Command, options commandOptions) (target.Plan, er
 		ids = []string{"nju-campus", "mlab", "apple"}
 	case model.CommandCampus:
 		ids = []string{"nju-campus"}
-	case model.CommandEdge:
-		ids = []string{"nju-edge"}
 	case model.CommandDomestic:
-		ids = []string{"tongji", "qlu"}
+		ids = []string{"tongji"}
 	case model.CommandMLab:
 		ids = []string{"mlab"}
 	case model.CommandApple:
@@ -440,7 +438,7 @@ func resolvePlan(command model.Command, options commandOptions) (target.Plan, er
 		if family == target.FamilyIPv6 {
 			return target.Plan{}, errors.New("domestic stations currently support IPv4 only")
 		}
-		allowed := map[string]struct{}{"cernet": {}, "qlu": {}, "tongji": {}}
+		allowed := map[string]struct{}{"cernet": {}, "tongji": {}}
 		for _, id := range ids {
 			if _, ok := allowed[id]; !ok {
 				return target.Plan{}, fmt.Errorf("target %q is not a domestic station", id)
@@ -676,7 +674,7 @@ func (app *App) renderDoctor(checks, optionalChecks map[string]string, consentAc
 		}
 		return styles.Warn("false")
 	}
-	fmt.Fprintln(out, styles.Title(fmt.Sprintf("soundprobe %s diagnostics", app.Version)))
+	fmt.Fprintln(out, styles.Title("soundprobe "+app.Version+" diagnostics"))
 	writeAligned(out, [][]string{
 		{"Campus", readiness(checks["campus"], false)},
 		{"M-Lab", readiness(checks["mlab"], false)},

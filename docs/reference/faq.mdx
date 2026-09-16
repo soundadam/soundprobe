@@ -37,11 +37,6 @@ icon: "circle-question"
     客户端常有偏差。soundprobe 校验 `speedtest --version` 的官方标识，
     发现是 Python 工具时明确拒绝，而不是静默使用。
   </Accordion>
-  <Accordion title="为什么 NJU Edge 显示“终端不支持”？">
-    其测速后端有浏览器验证，标准终端客户端只会被重定向。soundprobe
-    不绕过验证，也不发布一个只会返回 null 的目标，所以如实显示不
-    支持并在测量前失败。
-  </Accordion>
   <Accordion title="为什么 Ookla 结果里的运营商和我的宽带不一致？">
     `serverSponsor` 是**测速服务器**的运营方，不是你的接入运营商。
     soundprobe 不做客户端运营商识别、ASN 或地理定位。

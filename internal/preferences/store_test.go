@@ -34,11 +34,11 @@ func TestStoreRoundTripAndModes(t *testing.T) {
 	}
 }
 
-func TestConfigRejectsWebOnlyStation(t *testing.T) {
+func TestConfigRejectsUnknownStation(t *testing.T) {
 	config := DefaultConfig()
 	config.DailyStations = []string{"nju-edge"}
 	if err := config.Validate(); err == nil {
-		t.Fatal("Validate() accepted web-only station")
+		t.Fatal("Validate() accepted unknown station")
 	}
 }
 

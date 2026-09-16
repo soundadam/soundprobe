@@ -59,15 +59,10 @@ JSON 模式的字段：
     预期行为：`networkQuality` 是 macOS 系统组件。组合运行会自动移除
     该可选目标并继续；只有显式 `soundprobe apple` 才会失败。
   </Accordion>
-  <Accordion title="edge 目标报终端不支持">
-    NJU Edge（`test.nju.edu.cn`）的测速后端有浏览器验证，标准终端
-    客户端拿不到测量结果。soundprobe 如实报告而不绕过验证；待官方
-    提供终端兼容端点后才会启用。
-  </Accordion>
   <Accordion title="cernet 目标不可达">
     CERNET 公共站点（`speedtest.sec.edu.cn`）当前服务不可达。该目标
-    保留显式诊断用途，不进入日常设置；`tongji`、`qlu` 是可用的教育网
-    参考方向。
+    保留显式诊断用途，不进入日常设置；`tongji` 是可用的教育网参考
+    方向。
   </Accordion>
   <Accordion title="测量中途失败，如何定位阶段">
     每条失败测量带有稳定的 `failure.stage`：`helper`（helper 启动/

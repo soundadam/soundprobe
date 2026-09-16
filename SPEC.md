@@ -12,21 +12,17 @@ The maintained targets are:
 | Station ID | Measurement purpose | Families | Method |
 | --- | --- | --- | --- |
 | `nju-campus` | current path to NJU's campus-internal service | IPv4, IPv6 | LibreSpeed, three concurrent streams |
-| `nju-edge` | public path to NJU's internet-facing edge | IPv4, IPv6 | displayed but terminal execution disabled by browser verification |
 | `mlab` | general Internet bulk-transport performance and current egress reference | automatic | M-Lab NDT7, single stream |
 | `apple` | macOS public throughput and responsiveness under load | automatic | Apple `networkQuality`, single invocation |
 | `ookla` | nearby operator-side reference | automatic | official Ookla Speedtest CLI, dynamic server |
 | `cernet` | CERNET public station | IPv4 | LibreSpeed, three concurrent streams |
-| `qlu` | Qilu University of Technology station | IPv4 | LibreSpeed, three concurrent streams |
 | `tongji` | Tongji University station | IPv4 | LibreSpeed, three concurrent streams |
 
-NJU Campus and NJU Edge answer different questions. NJU Edge remains visible in
-the product model, but its official backend currently redirects terminal clients
-to a browser-verification challenge. soundprobe must not bypass that protection or
-publish a target that returns null. Edge selection therefore fails before
-measurement with a bounded explanation. IPv4 and IPv6 are independent
-measurements for supported stations; a dual plan expands them into ordered
-targets.
+IPv4 and IPv6 are independent measurements for supported stations; a dual plan
+expands them into ordered targets. Retired station IDs (`nju-edge`, `qlu`) are
+not catalogued and must not appear in the selector, setup, or `stations` list.
+Historical JSON provider IDs from those stations remain readable in schema-v1
+history.
 
 The product is a cross-platform Go CLI for macOS, Linux, and Windows. Apple
 `networkQuality` is a macOS-only optional provider; the core campus, M-Lab, and
@@ -43,18 +39,16 @@ Stable JSON provider IDs encode station and family:
 ```text
 nju-campus-ipv4
 nju-campus-ipv6
-nju-edge-ipv4
-nju-edge-ipv6
 mlab
 apple
 ookla
 cernet-ipv4
-qlu-ipv4
 tongji-ipv4
 ```
 
-The legacy provider ID `campus` remains valid only so schema-v1 history written
-by soundprobe 0.1 can still be read. New measurements use explicit IDs.
+The legacy provider IDs `campus`, `nju-edge-ipv4`, `nju-edge-ipv6`, and
+`qlu-ipv4` remain valid only so schema-v1 history can still be read. New
+measurements use the maintained IDs above.
 
 Every new run summary includes an ordered `targets` array. The number and order
 of measurement objects must match the requested targets. Duplicate targets are
@@ -102,37 +96,19 @@ The service describes the path to NJU's campus-internal measurement servers.
 `campus` defaults to IPv4. `campus --ipv6` runs IPv6 only, with no IPv4
 fallback.
 
-### 3.2 NJU Edge
-
-Published endpoints:
-
-```text
-IPv4  http://test.nju.edu.cn
-IPv6  http://test6.nju.edu.cn
-```
-
-The service represents the path to NJU's public internet-facing edge, but its
-measurement backend is protected by an Anubis browser challenge. Standard
-LibreSpeed CLI receives a redirect and returns no measurement. soundprobe displays
-NJU Edge as `terminal unsupported`; `edge` and `--targets nju-edge` fail before
-starting a helper. Do not automate or bypass the browser challenge. Enable this
-target only after NJU publishes a terminal-compatible endpoint or explicit
-integration contract.
-
-### 3.3 Domestic stations
+### 3.2 Domestic stations
 
 Pinned IPv4 endpoints:
 
 ```text
 CERNET  http://speedtest.sec.edu.cn
-QLU     https://speed.qlu.edu.cn
 Tongji  https://dev.tongji.edu.cn/speedtest
 ```
 
 These are optional independent targets. One station failure must not prevent
 later selected stations from running. The default `domestic` command runs
-Tongji then QLU sequentially. CERNET remains available only through an explicit
-target argument while its backend is unreachable.
+Tongji. CERNET remains available only through an explicit target argument while
+its backend is unreachable.
 
 ## 4. M-Lab behavior
 
@@ -216,8 +192,10 @@ Enter        execute
 q / Esc      cancel
 ```
 
-The selector shows station description, family support, reachability, and probe
-latency. IPv4-only stations are disabled in IPv6 mode.
+The selector chrome follows Teaway's Charm TUI: indigo title `soundprobe`,
+fuchsia cursor (`>`), green check (`✓`) for selected stations, faint bullet
+(`•`) for unselected, and a dashed (`–`) disabled marker. Help is sparse
+key names. IPv4-only stations are disabled in IPv6 mode.
 
 Recommendation rules:
 
@@ -225,10 +203,9 @@ Recommendation rules:
 2. Select M-Lab and Apple as automatic public references.
 3. If Campus is not reachable, keep M-Lab and Apple rather than silently
    substituting another station.
-4. Display NJU Edge as disabled with its browser-verification explanation.
-5. Ookla is never recommended automatically; it requires an active user choice.
-6. Tongji and QLU are available but not preselected. CERNET is retained only
-   as an explicit compatibility target while its backend is unreachable.
+4. Ookla is never recommended automatically; it requires an active user choice.
+5. Tongji is available but not preselected. CERNET is retained only as an
+   explicit compatibility target while its backend is unreachable.
 
 Recommendations set defaults only. They do not authorize silent fallback during
 measurement.
@@ -242,7 +219,6 @@ They resolve a deterministic target list from command defaults and flags:
 soundprobe run --targets LIST --family ipv4|ipv6|dual
 soundprobe domestic --targets LIST --family ipv4|dual
 soundprobe campus [--ipv4|--ipv6]
-soundprobe edge [--ipv4|--ipv6]
 soundprobe mlab
 soundprobe apple
 soundprobe ookla
@@ -284,14 +260,16 @@ Stable exit codes:
 
 ## 7. Terminal interface
 
-Use Bubble Tea v2 in inline mode, never alternate-screen mode. The selector must
+Use Bubble Tea v2 in inline mode, never alternate-screen mode. Visual chrome
+matches Teaway: indigo `soundprobe` title, fuchsia accent, faint help, and a
+thin `├─●─┤` activity track instead of a dense block bar. The selector must
 clear before measurement progress begins. During execution redraw one fixed
 block at no more than four frames per second.
 
 Every target receives the same four-row panel:
 
 1. explicit station/family label and phase;
-2. animated activity bar;
+2. animated activity track;
 3. download/upload rates;
 4. selected server or bounded failure detail.
 
@@ -310,7 +288,6 @@ raw provider events.
 soundprobe
 soundprobe run [--targets LIST] [--family ipv4|ipv6|dual] [--label TEXT] [--note TEXT] [--no-save]
 soundprobe campus [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
-soundprobe edge [--ipv4|--ipv6]  # reports terminal unsupported
 soundprobe domestic [--targets LIST] [--family ipv4|dual] [--label TEXT] [--note TEXT] [--no-save]
 soundprobe mlab [--label TEXT] [--note TEXT] [--no-save]
 soundprobe stations [--json]
@@ -386,7 +363,7 @@ Automated tests use mock helpers and local HTTP fixtures. They cover:
 
 - explicit station/family expansion and ordering;
 - selector recommendation, family switching, toggling, cancellation, and clear;
-- NJU Campus identity, Edge unsupported handling, and no fallback;
+- NJU Campus identity and no silent fallback;
 - domestic station identity and telemetry-disabled helper arguments;
 - M-Lab live event parsing and independent failure;
 - Apple `networkQuality` success/error/timeout, interface binding and RPM fields;
@@ -402,5 +379,5 @@ Automated tests use mock helpers and local HTTP fixtures. They cover:
 
 Routine CI must never run a real bandwidth measurement or station probe.
 Operator acceptance validates real NJU Campus, domestic stations, M-Lab
-continuation, Edge unsupported reporting, selector interaction, Homebrew
-installation, and upgrade on a supported macOS host.
+continuation, selector interaction, Homebrew installation, and upgrade on a
+supported macOS host.

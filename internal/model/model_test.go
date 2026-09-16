@@ -138,7 +138,7 @@ func TestFailedMeasurementRequiresZeroOrMeasuredSpeeds(t *testing.T) {
 
 func TestRunSummaryAcceptsExplicitMultiTargetPlan(t *testing.T) {
 	now := time.Date(2026, 7, 26, 8, 0, 0, 0, time.UTC)
-	providers := []Provider{ProviderNJUEdgeIPv4, ProviderNJUEdgeIPv6, ProviderMLab}
+	providers := []Provider{ProviderNJUCampusIPv4, ProviderNJUCampusIPv6, ProviderMLab}
 	measurements := make([]Measurement, 0, len(providers))
 	for _, measurementProvider := range providers {
 		measurements = append(measurements, Measurement{
@@ -197,11 +197,11 @@ func TestRunSummaryRejectsMeasurementOrderMismatch(t *testing.T) {
 		StartedAt:     now,
 		EndedAt:       now.Add(time.Second),
 		Command:       CommandRun,
-		Targets:       []Provider{ProviderNJUEdgeIPv4, ProviderMLab},
+		Targets:       []Provider{ProviderTongjiIPv4, ProviderMLab},
 		Status:        RunStatusSuccess,
 		Measurements: []Measurement{
 			{Provider: ProviderMLab, Method: MethodNDT7SingleStream, Status: ProviderStatusSuccess, DownloadMbps: Pointer(1.0), UploadMbps: Pointer(1.0)},
-			{Provider: ProviderNJUEdgeIPv4, Method: MethodLibreSpeedThreeStream, Status: ProviderStatusSuccess, DownloadMbps: Pointer(1.0), UploadMbps: Pointer(1.0)},
+			{Provider: ProviderTongjiIPv4, Method: MethodLibreSpeedThreeStream, Status: ProviderStatusSuccess, DownloadMbps: Pointer(1.0), UploadMbps: Pointer(1.0)},
 		},
 	}
 	if err := summary.Validate(); err == nil {

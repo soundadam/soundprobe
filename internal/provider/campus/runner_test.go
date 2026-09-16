@@ -64,27 +64,27 @@ func TestRunnerMeasuresIPv6WithoutFallback(t *testing.T) {
 }
 
 func TestTargetRunnerUsesPinnedExternalStationIdentity(t *testing.T) {
-	output := `[{"server":{"name":"QLU","url":"https://speed.qlu.edu.cn"},"client":{"ip":"203.0.113.42"},"bytes_sent":1000,"bytes_received":2000,"ping":10,"jitter":1,"download":20,"upload":10}]`
+	output := `[{"server":{"name":"Tongji","url":"https://dev.tongji.edu.cn/speedtest"},"client":{"ip":"203.0.113.42"},"bytes_sent":1000,"bytes_received":2000,"ping":10,"jitter":1,"download":20,"upload":10}]`
 	runner, argsPath := newFakeRunner(t, "", HelperVersion, 0, output)
 	runner.Config = Config{
-		Provider:   model.ProviderQLUIPv4,
-		Label:      "QLU · IPv4",
+		Provider:   model.ProviderTongjiIPv4,
+		Label:      "Tongji · IPv4",
 		Family:     "ipv4",
-		ServerName: "QLU",
-		ServerURL:  "https://speed.qlu.edu.cn",
+		ServerName: "Tongji",
+		ServerURL:  "https://dev.tongji.edu.cn/speedtest",
 	}
 	measurement, err := runner.Measure(context.Background(), provider.Request{Command: model.CommandDomestic})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if measurement.Provider != model.ProviderQLUIPv4 || measurement.ServerFQDN == nil || *measurement.ServerFQDN != "speed.qlu.edu.cn" {
+	if measurement.Provider != model.ProviderTongjiIPv4 || measurement.ServerFQDN == nil || *measurement.ServerFQDN != "dev.tongji.edu.cn" {
 		t.Fatalf("measurement = %#v", measurement)
 	}
 	data, err := os.ReadFile(filepath.Join(filepath.Dir(argsPath), "stdin.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), `"server":"https://speed.qlu.edu.cn"`) {
+	if !strings.Contains(string(data), `"server":"https://dev.tongji.edu.cn/speedtest"`) {
 		t.Fatalf("server list = %s", data)
 	}
 	if !contains(readArgs(t, argsPath), "--ipv4") {

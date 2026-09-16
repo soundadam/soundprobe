@@ -139,17 +139,6 @@ var stations = []Station{
 		TerminalSupported: true,
 	},
 	{
-		ID:                "qlu",
-		Label:             "QLU",
-		Description:       "Qilu University of Technology · Jinan, Shandong",
-		DescriptionZH:     "齐鲁工业大学 · 山东济南",
-		UseCase:           "Shandong regional reference; results vary with route and server load",
-		UseCaseZH:         "山东方向的区域参考；结果会随线路和服务负载变化",
-		IPv4:              &Spec{Provider: model.ProviderQLUIPv4, StationID: "qlu", Label: "QLU · IPv4", Family: "ipv4", ServerName: "QLU", ServerURL: "https://speed.qlu.edu.cn"},
-		DailyEligible:     true,
-		TerminalSupported: true,
-	},
-	{
 		ID:                "cernet",
 		Label:             "CERNET",
 		Description:       "CERNET public LibreSpeed station",
@@ -158,18 +147,6 @@ var stations = []Station{
 		UseCaseZH:         "当前不可用；仅保留显式命令兼容",
 		IPv4:              &Spec{Provider: model.ProviderCERNETIPv4, StationID: "cernet", Label: "CERNET · IPv4", Family: "ipv4", ServerName: "CERNET", ServerURL: "http://speedtest.sec.edu.cn"},
 		TerminalSupported: true,
-	},
-	{
-		ID:                "nju-edge",
-		Label:             "NJU Edge",
-		Description:       "NJU public Internet speed test",
-		DescriptionZH:     "南京大学互联网测速",
-		UseCase:           "Web only: http://test.nju.edu.cn",
-		UseCaseZH:         "仅网页： http://test.nju.edu.cn",
-		IPv4:              &Spec{Provider: model.ProviderNJUEdgeIPv4, StationID: "nju-edge", Label: "NJU Edge · IPv4", Family: "ipv4", ServerName: "NJU Edge IPv4", ServerURL: "http://test.nju.edu.cn"},
-		IPv6:              &Spec{Provider: model.ProviderNJUEdgeIPv6, StationID: "nju-edge", Label: "NJU Edge · IPv6", Family: "ipv6", ServerName: "NJU Edge IPv6", ServerURL: "http://test6.nju.edu.cn"},
-		TerminalSupported: false,
-		UnsupportedReason: "web only: http://test.nju.edu.cn (IPv4) or http://test6.nju.edu.cn (IPv6)",
 	},
 }
 
