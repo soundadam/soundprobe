@@ -11,8 +11,9 @@ const SchemaVersion = 1
 type Command string
 
 const (
-	CommandRun      Command = "run"
-	CommandCampus   Command = "campus"
+	CommandRun    Command = "run"
+	CommandCampus Command = "campus"
+	// CommandEdge is retained so schema-v1 history of the retired edge command can still be read.
 	CommandEdge     Command = "edge"
 	CommandDomestic Command = "domestic"
 	CommandMLab     Command = "mlab"
@@ -29,13 +30,14 @@ const (
 
 	ProviderNJUCampusIPv4 Provider = "nju-campus-ipv4"
 	ProviderNJUCampusIPv6 Provider = "nju-campus-ipv6"
-	ProviderNJUEdgeIPv4   Provider = "nju-edge-ipv4"
-	ProviderNJUEdgeIPv6   Provider = "nju-edge-ipv6"
 	ProviderCERNETIPv4    Provider = "cernet-ipv4"
-	ProviderQLUIPv4       Provider = "qlu-ipv4"
 	ProviderTongjiIPv4    Provider = "tongji-ipv4"
-	ProviderApple         Provider = "apple-networkquality"
-	ProviderOokla         Provider = "ookla-speedtest"
+	// Historical IDs remain valid so schema-v1 history can still be read.
+	ProviderNJUEdgeIPv4 Provider = "nju-edge-ipv4"
+	ProviderNJUEdgeIPv6 Provider = "nju-edge-ipv6"
+	ProviderQLUIPv4     Provider = "qlu-ipv4"
+	ProviderApple       Provider = "apple-networkquality"
+	ProviderOokla       Provider = "ookla-speedtest"
 )
 
 const (

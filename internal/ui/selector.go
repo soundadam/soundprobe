@@ -30,6 +30,7 @@ type selectorModel struct {
 	cancelled bool
 	errorText string
 	language  preferences.Language
+	theme     theme
 }
 
 func SelectPlan(ctx context.Context, input io.Reader, output io.Writer, version string) (target.Plan, error) {
@@ -105,16 +106,22 @@ func newSelectorModelConfigured(version string, probeResults []target.ProbeResul
 		family:   target.FamilyIPv4,
 		selected: map[string]bool{},
 		language: language,
+		theme:    newTheme(),
 	}
 	model.applyRecommendation()
 	return model
 }
 
 func (selector *selectorModel) Init() tea.Cmd {
-	return nil
+	return tea.RequestBackgroundColor
 }
 
 func (selector *selectorModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	switch message := message.(type) {
+	case tea.BackgroundColorMsg:
+		selector.theme.applyBackground(message)
+		return selector, nil
+	}
 	key, ok := message.(tea.KeyPressMsg)
 	if !ok {
 		return selector, nil
@@ -169,42 +176,44 @@ func (selector *selectorModel) View() tea.View {
 	if selector.done || selector.cancelled {
 		return tea.NewView("")
 	}
-	lines := []string{
-		fmt.Sprintf("soundprobe %s · %s", selector.version, selector.text("选择测速站", "select measurement targets")),
-		fmt.Sprintf("%s  %s   [4] IPv4  [6] IPv6  [d] dual", selector.text("地址族", "Address family"), selector.family),
-		"",
+	items := make([]listItem, 0, len(selector.stations))
+	for _, station := range selector.stations {
+		items = append(items, listItem{
+			label:    station.Label,
+			selected: selector.selected[station.ID],
+			disabled: !selector.stationSupported(station, selector.family),
+		})
 	}
-	for index, station := range selector.stations {
-		cursor := "  "
-		if index == selector.cursor {
-			cursor = "› "
-		}
-		check := "[ ]"
-		if selector.selected[station.ID] {
-			check = "[x]"
-		}
-		if !selector.stationSupported(station, selector.family) {
-			check = "[-]"
-		}
-		status := selector.stationStatus(station)
-		description := station.Description
-		if selector.language == preferences.LanguageChinese {
-			description = station.DescriptionZH
-		}
-		lines = append(lines,
-			fmt.Sprintf("%s%s %-12s %s", cursor, check, station.Label, truncateRunes(description, 44)),
-			fmt.Sprintf("      %s", truncateRunes(status, 68)),
-		)
+	family := string(selector.family)
+	if selector.family == target.FamilyDual {
+		family = "dual"
 	}
-	lines = append(lines,
-		"",
-		selector.text("↑/↓ 移动   Space 选择   a 推荐   Enter 开始   q 取消", "↑/↓ move   Space toggle   a recommended   Enter start   q cancel"),
-		selector.text("修改日常站点：soundprobe setup", "Change daily stations: soundprobe setup"),
+	header := joinBlocks(
+		selector.theme.appTitle(selector.version),
+		selector.theme.Faint().Render(selector.text("选择测速站", "Select measurement targets")),
+		selector.theme.Option().Render(family),
 	)
+	body := selector.theme.renderList(items, selector.cursor)
+	detail := selector.cursorDetail()
+	help := selector.theme.help("space", "enter", "a", "4 6 d") + "\n" + selector.theme.help("esc")
+	blocks := []string{header, body, detail, help}
 	if selector.errorText != "" {
-		lines = append(lines, "Error: "+selector.errorText)
+		blocks = append(blocks, selector.theme.Bad().Render(selector.errorText))
 	}
-	return tea.NewView(strings.Join(lines, "\n"))
+	return tea.NewView(joinBlocks(blocks...))
+}
+
+func (selector *selectorModel) cursorDetail() string {
+	if selector.cursor < 0 || selector.cursor >= len(selector.stations) {
+		return ""
+	}
+	station := selector.stations[selector.cursor]
+	description := station.Description
+	if selector.language == preferences.LanguageChinese {
+		description = station.DescriptionZH
+	}
+	status := selector.stationStatus(station)
+	return selector.theme.Faint().Render(description) + "\n" + selector.theme.Faint().Render(status)
 }
 
 func (selector *selectorModel) selectedIDs() []string {

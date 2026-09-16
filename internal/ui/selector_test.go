@@ -15,27 +15,33 @@ import (
 func TestSelectorRecommendsCampusWhenReachable(t *testing.T) {
 	selector := newSelectorModel("test", []target.ProbeResult{
 		{StationID: "nju-campus", Family: "ipv4", Status: target.ProbeReachable},
-		{StationID: "nju-edge", Family: "ipv4", Status: target.ProbeReachable},
 	})
 	appleExpected := runtime.GOOS == "darwin"
-	if !selector.selected["nju-campus"] || !selector.selected["mlab"] || selector.selected["apple"] != appleExpected || selector.selected["ookla"] || selector.selected["nju-edge"] {
+	if !selector.selected["nju-campus"] || !selector.selected["mlab"] || selector.selected["apple"] != appleExpected || selector.selected["ookla"] {
 		t.Fatalf("selection = %#v", selector.selected)
 	}
 	view := selector.View().Content
-	for _, expected := range []string{"soundprobe", "select measurement targets", "NJU Campus", "NJU Edge", "M-Lab", "[4] IPv4", "Space toggle"} {
+	for _, expected := range []string{"soundprobe", "Select measurement targets", "NJU Campus", "M-Lab", "ipv4", ">", "✓", "space", "enter"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("view missing %q:\n%s", expected, view)
 		}
 	}
+	for _, banned := range []string{"NJU Edge", "QLU", "nju-edge", "qlu"} {
+		if strings.Contains(view, banned) {
+			t.Fatalf("removed station still visible %q:\n%s", banned, view)
+		}
+	}
+	if !strings.Contains(view, "\x1b[") {
+		t.Fatal("selector should keep ANSI color")
+	}
 }
 
-func TestSelectorDoesNotRecommendUnsupportedEdge(t *testing.T) {
+func TestSelectorDoesNotRecommendUnreachableCampus(t *testing.T) {
 	selector := newSelectorModel("test", []target.ProbeResult{
 		{StationID: "nju-campus", Family: "ipv4", Status: target.ProbeUnreachable},
-		{StationID: "nju-edge", Family: "ipv4", Status: target.ProbeReachable},
 	})
 	appleExpected := runtime.GOOS == "darwin"
-	if selector.selected["nju-campus"] || selector.selected["nju-edge"] || !selector.selected["mlab"] || selector.selected["apple"] != appleExpected {
+	if selector.selected["nju-campus"] || !selector.selected["mlab"] || selector.selected["apple"] != appleExpected {
 		t.Fatalf("selection = %#v", selector.selected)
 	}
 }
@@ -43,8 +49,8 @@ func TestSelectorDoesNotRecommendUnsupportedEdge(t *testing.T) {
 func TestConfiguredSelectorShowsOnlyDailyStationsInPriorityOrder(t *testing.T) {
 	selector := newSelectorModelConfigured("test", []target.ProbeResult{
 		{StationID: "tongji", Family: "ipv4", Status: target.ProbeReachable},
-	}, preferences.Config{SchemaVersion: preferences.SchemaVersion, Language: preferences.LanguageChinese, DailyStations: []string{"tongji", "qlu"}})
-	if len(selector.stations) != 2 || selector.stations[0].ID != "tongji" || selector.stations[1].ID != "qlu" {
+	}, preferences.Config{SchemaVersion: preferences.SchemaVersion, Language: preferences.LanguageChinese, DailyStations: []string{"tongji", "ookla"}})
+	if len(selector.stations) != 2 || selector.stations[0].ID != "tongji" || selector.stations[1].ID != "ookla" {
 		t.Fatalf("stations = %#v", selector.stations)
 	}
 	view := selector.View().Content
@@ -78,10 +84,14 @@ func TestSelectorBuildsDualStackPlan(t *testing.T) {
 
 func TestSelectorDeselectsIPv4OnlyStationForIPv6(t *testing.T) {
 	selector := newSelectorModel("test", nil)
-	selector.selected["qlu"] = true
+	selector.selected["tongji"] = true
 	_, _ = selector.Update(key("6"))
-	if selector.selected["qlu"] {
+	if selector.selected["tongji"] {
 		t.Fatalf("IPv4-only station remained selected: %#v", selector.selected)
+	}
+	view := selector.View().Content
+	if !strings.Contains(view, "–") {
+		t.Fatalf("disabled station missing Teaway-style dash:\n%s", view)
 	}
 }
 

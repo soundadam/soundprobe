@@ -27,13 +27,13 @@ type styleSet struct {
 func newStyleSet(enabled bool) styleSet {
 	return styleSet{
 		enabled: enabled,
-		title:   lipgloss.NewStyle().Bold(true),
-		header:  lipgloss.NewStyle().Faint(true),
-		dim:     lipgloss.NewStyle().Faint(true),
-		ok:      lipgloss.NewStyle().Foreground(lipgloss.Green),
-		warn:    lipgloss.NewStyle().Foreground(lipgloss.Yellow),
-		bad:     lipgloss.NewStyle().Foreground(lipgloss.Red),
-		accent:  lipgloss.NewStyle().Foreground(lipgloss.Cyan),
+		title:   lipgloss.NewStyle().Foreground(lipgloss.Color("#7571F9")).Bold(true),
+		header:  lipgloss.NewStyle().Foreground(lipgloss.Color("243")),
+		dim:     lipgloss.NewStyle().Foreground(lipgloss.Color("243")),
+		ok:      lipgloss.NewStyle().Foreground(lipgloss.Color("#02BF87")),
+		warn:    lipgloss.NewStyle().Foreground(lipgloss.Color("#F780E2")),
+		bad:     lipgloss.NewStyle().Foreground(lipgloss.Color("#ED567A")),
+		accent:  lipgloss.NewStyle().Foreground(lipgloss.Color("#F780E2")),
 	}
 }
 

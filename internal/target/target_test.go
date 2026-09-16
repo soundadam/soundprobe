@@ -11,7 +11,7 @@ import (
 )
 
 func TestExpandPreservesStationAndFamilyOrder(t *testing.T) {
-	providers, err := Expand([]string{"nju-campus", "mlab", "qlu"}, FamilyDual)
+	providers, err := Expand([]string{"nju-campus", "mlab", "tongji"}, FamilyDual)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -19,7 +19,7 @@ func TestExpandPreservesStationAndFamilyOrder(t *testing.T) {
 		model.ProviderNJUCampusIPv4,
 		model.ProviderNJUCampusIPv6,
 		model.ProviderMLab,
-		model.ProviderQLUIPv4,
+		model.ProviderTongjiIPv4,
 	}
 	if len(providers) != len(want) {
 		t.Fatalf("providers = %#v", providers)
@@ -31,14 +31,16 @@ func TestExpandPreservesStationAndFamilyOrder(t *testing.T) {
 	}
 }
 
-func TestExpandRejectsBrowserProtectedEdge(t *testing.T) {
-	if _, err := Expand([]string{"nju-edge"}, FamilyIPv4); err == nil {
-		t.Fatal("Expand() accepted the browser-protected NJU Edge target")
+func TestExpandRejectsUnknownRetiredStations(t *testing.T) {
+	for _, id := range []string{"nju-edge", "qlu"} {
+		if _, err := Expand([]string{id}, FamilyIPv4); err == nil {
+			t.Fatalf("Expand() accepted retired target %q", id)
+		}
 	}
 }
 
 func TestExpandRejectsUnsupportedIPv6Station(t *testing.T) {
-	if _, err := Expand([]string{"qlu"}, FamilyIPv6); err == nil {
+	if _, err := Expand([]string{"tongji"}, FamilyIPv6); err == nil {
 		t.Fatal("Expand() succeeded for an IPv4-only station")
 	}
 }
@@ -84,11 +86,19 @@ func TestProbeUsesConfiguredBackend(t *testing.T) {
 }
 
 func TestLabelsExposeStationAndFamily(t *testing.T) {
-	if got := Label(model.ProviderNJUEdgeIPv6); got != "NJU Edge · IPv6" {
+	if got := Label(model.ProviderNJUCampusIPv6); got != "NJU Campus · IPv6" {
 		t.Fatalf("label = %q", got)
 	}
 	if got := Label(model.ProviderMLab); got != "M-Lab" {
 		t.Fatalf("label = %q", got)
+	}
+}
+
+func TestCatalogOmitsRetiredStations(t *testing.T) {
+	for _, station := range Stations() {
+		if station.ID == "nju-edge" || station.ID == "qlu" {
+			t.Fatalf("retired station %q remains in catalog", station.ID)
+		}
 	}
 }
 

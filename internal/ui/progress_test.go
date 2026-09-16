@@ -41,25 +41,27 @@ func TestProgressModelRendersEqualProviderPanels(t *testing.T) {
 
 	view := progress.View().Content
 	for _, expected := range []string{
-		"soundprobe test",
-		"Network   en0 · wifi · NJU-WLAN",
-		"Order     NJU Campus · IPv4 → M-Lab · sequential",
-		"NJU Campus · IPv4    ✓ complete · 00:00",
-		"Activity  [████████████████████████]",
-		"Rate      ↓ 876.54 Mbps · ↑ 345.67 Mbps",
-		"Detail    server speed.nju.edu.cn",
-		"M-Lab                ◐ downloading · 00:00",
-		"Rate      ↓ 80.00 Mbps · ↑ —",
-		"Detail    server ndt.example.net",
-		"Elapsed   00:12",
-		"Ctrl-C    cancel",
+		"soundprobe",
+		"Network  en0 · wifi · NJU-WLAN",
+		"Order    NJU Campus · IPv4 → M-Lab · sequential",
+		"NJU Campus · IPv4",
+		"complete · 00:00",
+		"●",
+		"↓ 876.54 Mbps   ↑ 345.67 Mbps",
+		"server speed.nju.edu.cn",
+		"M-Lab",
+		"downloading · 00:00",
+		"↓ 80.00 Mbps   ↑ —",
+		"server ndt.example.net",
+		"00:12",
+		"ctrl-c",
 	} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("view missing %q:\n%s", expected, view)
 		}
 	}
-	if len(strings.Split(view, "\n")) != 13 {
-		t.Fatalf("view lines = %d, want 13", len(strings.Split(view, "\n")))
+	if !strings.Contains(view, "\x1b[") {
+		t.Fatal("progress should keep ANSI color")
 	}
 }
 
@@ -93,10 +95,12 @@ func TestProgressModelKeepsLiveRatesAndRendersEitherProviderFailure(t *testing.T
 
 	view := progress.View().Content
 	for _, expected := range []string{
-		"NJU Campus · IPv4    × failed",
+		"NJU Campus · IPv4",
+		"failed",
 		"error: server unreachable",
-		"M-Lab                ◐ uploading",
-		"Rate      ↓ 33.67 Mbps · ↑ 4.75 Mbps",
+		"M-Lab",
+		"uploading",
+		"↓ 33.67 Mbps   ↑ 4.75 Mbps",
 		"server ndt.example.net",
 	} {
 		if !strings.Contains(view, expected) {
@@ -120,10 +124,10 @@ func TestProgressModelRendersMLabFailureWithTheSamePanelContract(t *testing.T) {
 
 	view := progress.View().Content
 	for _, expected := range []string{
-		"M-Lab                × failed · upload",
-		"Activity  [────────────────────────]",
-		"Rate      ↓ — · ↑ —",
-		"Detail    error: dial tcp: network is unreachable",
+		"M-Lab",
+		"failed · upload",
+		"↓ —   ↑ —",
+		"error: dial tcp: network is unreachable",
 	} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("view missing %q:\n%s", expected, view)
@@ -132,15 +136,16 @@ func TestProgressModelRendersMLabFailureWithTheSamePanelContract(t *testing.T) {
 }
 
 func TestActivityBarAnimatesWithoutPretendingPercentage(t *testing.T) {
-	first := renderActivity(provider.ProgressMeasuring, time.Unix(0, 0))
-	second := renderActivity(provider.ProgressMeasuring, time.Unix(0, int64(refreshInterval)))
+	progress := &progressModel{theme: newTheme()}
+	first := progress.renderActivity(provider.ProgressMeasuring, time.Unix(0, 0))
+	second := progress.renderActivity(provider.ProgressMeasuring, time.Unix(0, int64(refreshInterval)))
 	if first == second {
 		t.Fatalf("activity bar did not animate: %q", first)
 	}
 	if strings.Contains(first, "%") || strings.Contains(second, "%") {
 		t.Fatalf("activity bar presents a false percentage: %q / %q", first, second)
 	}
-	if got := renderActivity(provider.ProgressComplete, time.Time{}); strings.Count(got, "█") != activityWidth {
+	if got := progress.renderActivity(provider.ProgressComplete, time.Time{}); !strings.Contains(got, "●") {
 		t.Fatalf("complete activity = %q", got)
 	}
 }
@@ -184,7 +189,7 @@ func TestProgressRendererRendersFinalFrameBeforeClear(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := output.String(); !strings.Contains(got, "Rate      ↓ 44.08 Mbps · ↑ 4.23 Mbps") {
+	if got := output.String(); !strings.Contains(got, "↓ 44.08 Mbps   ↑ 4.23 Mbps") {
 		t.Fatalf("final frame was not rendered before clear:\n%q", got)
 	}
 }

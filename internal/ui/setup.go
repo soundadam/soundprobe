@@ -3,9 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -25,6 +23,7 @@ type setupModel struct {
 	done      bool
 	cancelled bool
 	errorText string
+	theme     theme
 }
 
 func Configure(ctx context.Context, input io.Reader, output io.Writer, version string, current preferences.Config) (preferences.Config, error) {
@@ -61,12 +60,17 @@ func newSetupModel(version string, current preferences.Config) *setupModel {
 	for _, id := range current.DailyStations {
 		selected[id] = true
 	}
-	return &setupModel{version: version, language: current.Language, stations: stations, selected: selected}
+	return &setupModel{version: version, language: current.Language, stations: stations, selected: selected, theme: newTheme()}
 }
 
-func (setup *setupModel) Init() tea.Cmd { return nil }
+func (setup *setupModel) Init() tea.Cmd { return tea.RequestBackgroundColor }
 
 func (setup *setupModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	switch message := message.(type) {
+	case tea.BackgroundColorMsg:
+		setup.theme.applyBackground(message)
+		return setup, nil
+	}
 	key, ok := message.(tea.KeyPressMsg)
 	if !ok {
 		return setup, nil
@@ -78,7 +82,7 @@ func (setup *setupModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if setup.screen == 0 {
 		switch key.String() {
-		case "left", "right", "h", "l", "tab", "space":
+		case "left", "right", "h", "l", "tab", "space", "up", "down", "j", "k":
 			if setup.language == preferences.LanguageChinese {
 				setup.language = preferences.LanguageEnglish
 			} else {
@@ -119,51 +123,44 @@ func (setup *setupModel) View() tea.View {
 		return tea.NewView("")
 	}
 	if setup.screen == 0 {
-		zh, en := "  中文  ", "  English  "
-		if setup.language == preferences.LanguageChinese {
-			zh = "› 中文"
-		} else {
-			en = "› English"
+		items := []listItem{
+			{label: "中文", selected: setup.language == preferences.LanguageChinese},
+			{label: "English", selected: setup.language == preferences.LanguageEnglish},
 		}
-		return tea.NewView(strings.Join([]string{
-			fmt.Sprintf("soundprobe %s · welcome / 欢迎", setup.version),
-			"",
-			"Choose interface language / 选择界面语言",
-			"",
-			zh + "     " + en,
-			"",
-			"←/→ switch   Enter continue   q cancel",
-		}, "\n"))
+		cursor := 0
+		if setup.language == preferences.LanguageEnglish {
+			cursor = 1
+		}
+		return tea.NewView(joinBlocks(
+			setup.theme.appTitle(setup.version),
+			setup.theme.Faint().Render("Choose interface language / 选择界面语言"),
+			setup.theme.renderList(items, cursor),
+			setup.theme.help("← →", "enter", "esc"),
+		))
 	}
-	lines := []string{
-		fmt.Sprintf("soundprobe %s · %s", setup.version, setup.text("选择日常测速站", "choose daily stations")),
-		setup.text("以后直接运行 soundprobe 时只显示这些站点，可用 soundprobe setup 修改。", "Only these stations appear in daily use. Run soundprobe setup to change them."),
-		"",
+	items := make([]listItem, 0, len(setup.stations))
+	for _, station := range setup.stations {
+		items = append(items, listItem{label: station.Label, selected: setup.selected[station.ID]})
 	}
-	for index, station := range setup.stations {
-		cursor := "  "
-		if index == setup.cursor {
-			cursor = "› "
-		}
-		check := "[ ]"
-		if setup.selected[station.ID] {
-			check = "[x]"
-		}
+	header := joinBlocks(
+		setup.theme.appTitle(setup.version),
+		setup.theme.Faint().Render(setup.text("选择日常测速站", "Choose daily stations")),
+	)
+	detail := ""
+	if setup.cursor >= 0 && setup.cursor < len(setup.stations) {
+		station := setup.stations[setup.cursor]
 		description, useCase := station.Description, station.UseCase
 		if setup.language == preferences.LanguageChinese {
 			description, useCase = station.DescriptionZH, station.UseCaseZH
 		}
-		lines = append(lines, fmt.Sprintf("%s%s %-12s %s", cursor, check, station.Label, description), "      "+useCase)
+		detail = setup.theme.Faint().Render(description) + "\n" + setup.theme.Faint().Render(useCase)
 	}
-	lines = append(lines, "",
-		setup.text("网页测速（不加入日常 CLI）：南大 http://test.nju.edu.cn · 中科大 https://test.ustc.edu.cn", "Web tests (not daily CLI): NJU http://test.nju.edu.cn · USTC https://test.ustc.edu.cn"),
-		"",
-		setup.text("↑/↓ 移动   Space 选择   Enter 保存   b 返回   q 取消", "↑/↓ move   Space toggle   Enter save   b back   q cancel"),
-	)
+	help := setup.theme.help("space", "enter", "b") + "\n" + setup.theme.help("esc")
+	blocks := []string{header, setup.theme.renderList(items, setup.cursor), detail, help}
 	if setup.errorText != "" {
-		lines = append(lines, setup.errorText)
+		blocks = append(blocks, setup.theme.Bad().Render(setup.errorText))
 	}
-	return tea.NewView(strings.Join(lines, "\n"))
+	return tea.NewView(joinBlocks(blocks...))
 }
 
 func (setup *setupModel) selectedIDs() []string {

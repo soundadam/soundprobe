@@ -24,10 +24,8 @@ const (
 )
 
 const (
-	activityWidth    = 24
-	activityPulse    = 5
-	detailRuneLimit  = 58
-	continuationLead = "          "
+	activityWidth   = 24
+	detailRuneLimit = 58
 )
 
 type ProgressRenderer struct {
@@ -119,6 +117,7 @@ type progressModel struct {
 	order     []model.Provider
 	ready     chan struct{}
 	blank     bool
+	theme     theme
 }
 
 type progressMessage provider.ProgressEvent
@@ -143,12 +142,13 @@ func newProgressModel(version string, targets []model.Provider, ready chan struc
 		providers: states,
 		order:     order,
 		ready:     ready,
+		theme:     newTheme(),
 	}
 }
 
 func (progress *progressModel) Init() tea.Cmd {
 	close(progress.ready)
-	return tick()
+	return tea.Batch(tick(), tea.RequestBackgroundColor)
 }
 
 func tick() tea.Cmd {
@@ -159,6 +159,9 @@ func tick() tea.Cmd {
 
 func (progress *progressModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
+	case tea.BackgroundColorMsg:
+		progress.theme.applyBackground(message)
+		return progress, nil
 	case progressMessage:
 		progress.applyEvent(provider.ProgressEvent(message))
 		return progress, nil
@@ -221,19 +224,18 @@ func (progress *progressModel) View() tea.View {
 	if progress.blank {
 		return tea.NewView("")
 	}
-	lines := []string{
-		fmt.Sprintf("soundprobe %s", progress.version),
-		fmt.Sprintf("Network   %s", renderNetwork(progress.network)),
-		fmt.Sprintf("Order     %s", renderOrder(progress.order)),
-	}
-	for _, name := range progress.order {
-		lines = append(lines, renderProvider(name, progress.providers[name], progress.now)...)
-	}
-	lines = append(lines,
-		fmt.Sprintf("Elapsed   %s", formatElapsed(progress.now.Sub(progress.startedAt))),
-		"Ctrl-C    cancel",
+	header := joinBlocks(
+		progress.theme.appTitle(progress.version),
+		progress.theme.Faint().Render("Network  "+renderNetwork(progress.network))+"\n"+
+			progress.theme.Faint().Render("Order    "+renderOrder(progress.order)),
 	)
-	return tea.NewView(strings.Join(lines, "\n"))
+	panels := make([]string, 0, len(progress.order))
+	for _, name := range progress.order {
+		panels = append(panels, strings.Join(progress.renderProvider(name, progress.providers[name], progress.now), "\n"))
+	}
+	footer := progress.theme.Faint().Render(formatElapsed(progress.now.Sub(progress.startedAt))) + "\n" +
+		progress.theme.help("ctrl-c")
+	return tea.NewView(joinBlocks(header, strings.Join(panels, "\n\n"), footer))
 }
 
 func renderOrder(providers []model.Provider) string {
@@ -261,32 +263,34 @@ func renderNetwork(network model.NetworkContext) string {
 	return strings.Join(parts, " · ")
 }
 
-func renderProvider(name model.Provider, state providerState, now time.Time) []string {
-	label := target.Label(name)
-	status := fmt.Sprintf("%-20s %s %s", label, phaseMarker(state.phase), phaseLabel(state.phase, state.test))
+func (progress *progressModel) renderProvider(name model.Provider, state providerState, now time.Time) []string {
+	status := phaseLabel(state.phase, state.test)
 	if elapsed, ok := providerElapsed(state, now); ok {
 		status += " · " + formatElapsed(elapsed)
 	}
-	return []string{
-		status,
-		fmt.Sprintf("%sActivity  %s", continuationLead, renderActivity(state.phase, now)),
-		fmt.Sprintf("%sRate      ↓ %s · ↑ %s", continuationLead, formatMbps(state.downloadMbps), formatMbps(state.uploadMbps)),
-		fmt.Sprintf("%sDetail    %s", continuationLead, providerDetail(state)),
-	}
-}
-
-func phaseMarker(phase provider.ProgressPhase) string {
-	switch phase {
+	label := progress.theme.Option().Render(target.Label(name))
+	switch state.phase {
 	case provider.ProgressComplete:
-		return "✓"
+		label = progress.theme.OK().Render(target.Label(name))
+		status = progress.theme.OK().Render(status)
 	case provider.ProgressFailed:
-		return "×"
+		label = progress.theme.Bad().Render(target.Label(name))
+		status = progress.theme.Bad().Render(status)
 	case provider.ProgressCancelled:
-		return "■"
+		label = progress.theme.Faint().Render(target.Label(name))
+		status = progress.theme.Faint().Render(status)
 	case provider.ProgressWaiting:
-		return "○"
+		status = progress.theme.Faint().Render(status)
 	default:
-		return "◐"
+		label = progress.theme.Accent().Render(target.Label(name))
+		status = progress.theme.Accent().Render(status)
+	}
+	rates := progress.theme.Option().Render(fmt.Sprintf("↓ %s   ↑ %s", formatMbps(state.downloadMbps), formatMbps(state.uploadMbps)))
+	return []string{
+		label + "  " + status,
+		"  " + progress.renderActivity(state.phase, now),
+		"  " + rates,
+		"  " + progress.theme.Faint().Render(providerDetail(state)),
 	}
 }
 
@@ -318,29 +322,30 @@ func phaseLabel(phase provider.ProgressPhase, test string) string {
 	}
 }
 
-func renderActivity(phase provider.ProgressPhase, now time.Time) string {
-	if phase == provider.ProgressComplete {
-		return "[" + strings.Repeat("█", activityWidth) + "]"
+func (progress *progressModel) renderActivity(phase provider.ProgressPhase, now time.Time) string {
+	cells := make([]rune, activityWidth)
+	for index := range cells {
+		cells[index] = '─'
 	}
-	if phase == provider.ProgressWaiting {
-		return "[" + strings.Repeat("░", activityWidth) + "]"
-	}
-	if phase == provider.ProgressFailed || phase == provider.ProgressCancelled {
-		return "[" + strings.Repeat("─", activityWidth) + "]"
-	}
-	position := int(now.UnixNano()/int64(refreshInterval)) % (activityWidth + activityPulse)
-	var builder strings.Builder
-	builder.WriteByte('[')
-	for index := 0; index < activityWidth; index++ {
-		distance := position - index
-		if distance >= 0 && distance < activityPulse {
-			builder.WriteRune('█')
-		} else {
-			builder.WriteRune('░')
+	cells[0] = '├'
+	cells[activityWidth-1] = '┤'
+	switch phase {
+	case provider.ProgressComplete:
+		cells[activityWidth-2] = '●'
+		return progress.theme.OK().Render(string(cells))
+	case provider.ProgressWaiting:
+		return progress.theme.Faint().Render(string(cells))
+	case provider.ProgressFailed, provider.ProgressCancelled:
+		return progress.theme.Bad().Render(string(cells))
+	default:
+		span := activityWidth - 2
+		if span < 1 {
+			span = 1
 		}
+		position := int(now.UnixNano()/int64(refreshInterval))%span + 1
+		cells[position] = '●'
+		return progress.theme.Accent().Render(string(cells))
 	}
-	builder.WriteByte(']')
-	return builder.String()
 }
 
 func providerDetail(state providerState) string {

@@ -477,10 +477,10 @@ func TestBareTTYRunsOnboardingOnceAndUsesDailyStations(t *testing.T) {
 }
 
 func TestRunTargetAndFamilyFlagsExpandDeterministically(t *testing.T) {
-	providers := []model.Provider{model.ProviderNJUCampusIPv4, model.ProviderNJUCampusIPv6, model.ProviderQLUIPv4}
+	providers := []model.Provider{model.ProviderNJUCampusIPv4, model.ProviderNJUCampusIPv6, model.ProviderTongjiIPv4}
 	runner := &fakeRunner{summary: summaryForProviders(model.CommandRun, providers)}
 	app, _, stderr := newTestApp(t, runner)
-	exitCode := app.Execute(context.Background(), []string{"run", "--targets", "nju-campus,qlu", "--family", "dual", "--no-save"})
+	exitCode := app.Execute(context.Background(), []string{"run", "--targets", "nju-campus,tongji", "--family", "dual", "--no-save"})
 	if exitCode != 0 {
 		t.Fatalf("exit code = %d, stderr = %q", exitCode, stderr.String())
 	}
@@ -490,7 +490,7 @@ func TestRunTargetAndFamilyFlagsExpandDeterministically(t *testing.T) {
 }
 
 func TestDomesticDefaultsToUsableIPv4Stations(t *testing.T) {
-	providers := []model.Provider{model.ProviderTongjiIPv4, model.ProviderQLUIPv4}
+	providers := []model.Provider{model.ProviderTongjiIPv4}
 	runner := &fakeRunner{summary: summaryForProviders(model.CommandDomestic, providers)}
 	app, _, stderr := newTestApp(t, runner)
 	if exitCode := app.Execute(context.Background(), []string{"domestic", "--no-save"}); exitCode != 0 {
@@ -501,19 +501,19 @@ func TestDomesticDefaultsToUsableIPv4Stations(t *testing.T) {
 	}
 }
 
-func TestEdgeCommandReportsTerminalUnsupported(t *testing.T) {
+func TestEdgeCommandIsRemoved(t *testing.T) {
 	app, _, stderr := newTestApp(t, &fakeRunner{})
 	if exitCode := app.Execute(context.Background(), []string{"edge", "--no-save"}); exitCode != 1 {
 		t.Fatalf("exit code = %d", exitCode)
 	}
-	if !strings.Contains(stderr.String(), "unavailable in terminal mode") {
+	if !strings.Contains(stderr.String(), "unknown command") {
 		t.Fatalf("stderr = %q", stderr.String())
 	}
 }
 
 func TestDomesticRejectsNonDomesticTarget(t *testing.T) {
 	app, _, stderr := newTestApp(t, &fakeRunner{})
-	if exitCode := app.Execute(context.Background(), []string{"domestic", "--targets", "nju-edge"}); exitCode != 1 {
+	if exitCode := app.Execute(context.Background(), []string{"domestic", "--targets", "mlab"}); exitCode != 1 {
 		t.Fatalf("exit code = %d", exitCode)
 	}
 	if !strings.Contains(stderr.String(), "not a domestic station") {
@@ -523,7 +523,7 @@ func TestDomesticRejectsNonDomesticTarget(t *testing.T) {
 
 func TestIPv6RejectsIPv4OnlyStation(t *testing.T) {
 	app, _, stderr := newTestApp(t, &fakeRunner{})
-	if exitCode := app.Execute(context.Background(), []string{"run", "--targets", "qlu", "--family", "ipv6"}); exitCode != 1 {
+	if exitCode := app.Execute(context.Background(), []string{"run", "--targets", "tongji", "--family", "ipv6"}); exitCode != 1 {
 		t.Fatalf("exit code = %d", exitCode)
 	}
 	if !strings.Contains(stderr.String(), "does not support IPv6") {

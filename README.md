@@ -16,8 +16,8 @@ Windows，Go 编写，终端界面基于 Bubble Tea 内联渲染。
 
 - **多视角，不打分**：每个目标独立回答一个问题；不同目标的结果永远
   不会被替换、排名或折算成综合分数。
-- **教育网优先**：NJU 校园网是产品主线，同济/齐鲁工大等教育网站点是
-  可选参考方向，M-Lab 提供公网出口视角。
+- **教育网优先**：NJU 校园网是产品主线，同济等教育网站点是可选参考
+  方向，M-Lab 提供公网出口视角。
 - **诚实失败**：失败记录零速率和稳定的失败阶段；取消后未开始的目标记
   `skipped` 与 null 速率。失败不伪装成成功。
 - **JSON 自动化**：全局 `--json` 输出单个无 ANSI 文档，退出码稳定，
@@ -66,13 +66,11 @@ soundprobe
 | `apple` | macOS 默认 | macOS 内置的公网吞吐与负载下响应性 | `/usr/bin/networkQuality -c -s`；显示吞吐、基础 RTT 与 RPM；Linux/Windows 自动跳过 |
 | `ookla` | 否 | 附近 Ookla 测试服务器的运营商侧参考 | 仅官方 Speedtest CLI；动态服务器、ID、赞助方和地址写入结果 |
 | `tongji` | 否 | 上海及江浙沪方向的教育网参考 | Tongji LibreSpeed 三流，IPv4 |
-| `qlu` | 否 | 山东方向的教育网参考 | QLU LibreSpeed 三流，IPv4；受路由和服务器负载影响 |
 | `cernet` | 否 | CERNET 公共站点兼容性 | 当前服务不可达，保留显式诊断，不进入日常设置 |
 
-NJU Edge (`http://test.nju.edu.cn`、`http://test6.nju.edu.cn`) 和中科大
-网页测速是浏览器产品，不加入 CLI 测速；soundprobe 不绕过浏览器验证。
-教育网三流是三个并发 HTTP 请求，不是三条物理线路，也不表示服务器带宽
-异常大。NDT7 是单流 bulk-transport；两种方法的数值不应直接横向排名。
+中科大网页测速是浏览器产品，不加入 CLI 测速。教育网三流是三个并发
+HTTP 请求，不是三条物理线路，也不表示服务器带宽异常大。NDT7 是单流
+bulk-transport；两种方法的数值不应直接横向排名。
 
 所有选中目标按显示顺序串行执行，避免互相争抢带宽。Ookla 不自动加入：
 只有在 `soundprobe setup` 中主动选择且官方 helper 可用时才运行。
@@ -83,8 +81,7 @@ NJU Edge (`http://test.nju.edu.cn`、`http://test6.nju.edu.cn`) 和中科大
 soundprobe
 soundprobe run [--targets LIST] [--family ipv4|ipv6|dual] [--label TEXT] [--note TEXT] [--no-save]
 soundprobe campus [--ipv4|--ipv6] [--label TEXT] [--note TEXT] [--no-save]
-soundprobe edge [--ipv4|--ipv6]            # 如实报告终端不支持
-soundprobe domestic [--targets tongji,qlu] [--family ipv4] [--no-save]
+soundprobe domestic [--targets tongji] [--family ipv4] [--no-save]
 soundprobe mlab | apple | ookla [--label TEXT] [--note TEXT] [--no-save]
 soundprobe stations [--json]
 soundprobe history [--limit N] | last [--json] | show RUN_ID [--json]
@@ -187,8 +184,8 @@ CI 不执行真实带宽测试；真实测速由对应平台操作者单独验�
 
 ## 命名约定
 
-产品名、仓库名、Homebrew Formula 和可执行文件均保持小写 `soundprobe`；
-`SoundProbe` 只用于必要的人类可读标题。
+产品名、仓库名、Homebrew Formula、可执行文件、TUI 标题和 CLI 输出均
+保持小写 `soundprobe`。Go 模块路径保持 `github.com/soundadam/soundprobe`。
 
 ## Contributing
 

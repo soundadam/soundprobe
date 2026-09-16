@@ -30,7 +30,7 @@ icon: "code"
 | `runId` | string | 运行 ID，也是历史文件名 |
 | `toolVersion` | string | soundprobe 版本 |
 | `startedAt` / `endedAt` | RFC 3339 时间 | 起止时间 |
-| `command` | string | `run`/`campus`/`edge`/`domestic`/`mlab`/`apple`/`ookla` |
+| `command` | string | `run`/`campus`/`domestic`/`mlab`/`apple`/`ookla`（旧 `edge` 仅用于读取 schema-v1 历史） |
 | `targets` | string[] | **按执行顺序**排列的 provider ID |
 | `status` | string | `success` / `partial` / `failed` / `cancelled` |
 | `label` / `note` | string \| null | `--label` / `--note` 的值 |
@@ -41,7 +41,7 @@ icon: "code"
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `provider` | string | 稳定 ID：`nju-campus-ipv4/-ipv6`、`nju-edge-ipv4/-ipv6`、`mlab`、`apple-networkquality`、`ookla-speedtest`、`cernet-ipv4`、`qlu-ipv4`、`tongji-ipv4`（旧 `campus` 仅用于读取 schema-v1 历史） |
+| `provider` | string | 稳定 ID：`nju-campus-ipv4/-ipv6`、`mlab`、`apple-networkquality`、`ookla-speedtest`、`cernet-ipv4`、`tongji-ipv4`（旧 `campus`、`nju-edge-ipv4/-ipv6`、`qlu-ipv4` 仅用于读取 schema-v1 历史） |
 | `method` | string | `librespeed-three-stream` / `ndt7-single-stream` / `apple-networkquality` / `ookla-speedtest` |
 | `status` | string | `success` / `failed` / `skipped` / `cancelled`，语义见[结果解读](/concepts/reading-results) |
 | `ipFamily` | string \| null | helper 返回的实际地址族（`ipv4`/`ipv6`） |

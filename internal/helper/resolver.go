@@ -144,7 +144,7 @@ func repositoryRoots(paths ...string) []string {
 	var roots []string
 	for _, path := range paths {
 		for directory := path; ; directory = filepath.Dir(directory) {
-			if isSoundProbeRepository(directory) {
+			if isSoundprobeModule(directory) {
 				if _, exists := seen[directory]; !exists {
 					seen[directory] = struct{}{}
 					roots = append(roots, directory)
@@ -160,7 +160,7 @@ func repositoryRoots(paths ...string) []string {
 	return roots
 }
 
-func isSoundProbeRepository(directory string) bool {
+func isSoundprobeModule(directory string) bool {
 	data, err := os.ReadFile(filepath.Join(directory, "go.mod"))
 	if err != nil {
 		return false

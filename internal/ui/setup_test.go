@@ -9,18 +9,27 @@ import (
 
 func TestSetupChoosesLanguageAndDailyStations(t *testing.T) {
 	setup := newSetupModel("test", preferences.DefaultConfig())
-	if !strings.Contains(setup.View().Content, "soundprobe test") {
-		t.Fatal("language screen does not show lowercase brand")
+	view := setup.View().Content
+	if !strings.Contains(view, "soundprobe") {
+		t.Fatal("language screen does not show lowercase soundprobe title")
+	}
+	if !strings.Contains(view, "中文") || !strings.Contains(view, "English") || !strings.Contains(view, ">") {
+		t.Fatalf("language screen missing Teaway select chrome:\n%s", view)
+	}
+	if !strings.Contains(view, "\x1b[") {
+		t.Fatal("setup should keep ANSI color")
 	}
 	_, _ = setup.Update(key("enter"))
-	view := setup.View().Content
-	for _, expected := range []string{"南京大学校内测速服务", "公共互联网 NDT7", "同济大学 · 上海", "齐鲁工业大学 · 山东济南", "test.ustc.edu.cn"} {
+	view = setup.View().Content
+	for _, expected := range []string{"南京大学校内测速服务", "公共互联网 NDT7", "同济大学 · 上海", "✓"} {
 		if !strings.Contains(view, expected) {
 			t.Fatalf("setup view missing %q:\n%s", expected, view)
 		}
 	}
-	if strings.Contains(view, "CERNET") {
-		t.Fatalf("setup view includes unavailable CERNET station:\n%s", view)
+	for _, banned := range []string{"齐鲁工业大学", "QLU", "test.nju.edu.cn", "NJU Edge", "CERNET"} {
+		if strings.Contains(view, banned) {
+			t.Fatalf("setup view includes removed or unavailable station %q:\n%s", banned, view)
+		}
 	}
 	setup.selected = map[string]bool{"tongji": true}
 	modelValue, command := setup.Update(key("enter"))
